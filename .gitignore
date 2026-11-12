@@ -1,0 +1,14 @@
+.build/
+dist/
+.DS_Store
+__pycache__/
+
+# Local credentials, environment files, and personal documents
+.env
+.env.*
+!.env.example
+auth.json
+runtime.json
+*.log
+.swiftpm/
+/Artwork/

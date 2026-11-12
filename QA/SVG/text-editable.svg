@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="240.0pt" height="150.0pt" viewBox="0 0 240.0 150.0" preserveAspectRatio="xMinYMin meet" overflow="hidden">
+<title>Magdobe Illustrator artwork</title>
+<defs>
+<clipPath id="magdobe_artboard_clip" clipPathUnits="userSpaceOnUse"><rect x="0" y="0" width="240.0" height="150.0"/></clipPath>
+<clipPath id="text_clip_0deb47b2-0c16-47f5-be6c-f86c2efe18db" clipPathUnits="userSpaceOnUse"><rect x="30.0" y="40.0" width="180.0" height="60.0"/></clipPath>
+</defs>
+<g id="magdobe_artwork" clip-path="url(#magdobe_artboard_clip)">
+<g id="layer_0deb47b2-0c16-47f5-be6c-f86c2efe18db" data-name="Type"><title>Type</title>
+<text id="object_0deb47b2-0c16-47f5-be6c-f86c2efe18db" data-name="Type" fill="rgb(9.0%,11.0%,16.0%)" fill-opacity="1.0" opacity="1.0" fill-rule="nonzero" clip-path="url(#text_clip_0deb47b2-0c16-47f5-be6c-f86c2efe18db)" font-size="24.0" font-family="&apos;.AppleSystemUIFont&apos;, &apos;Helvetica Neue&apos;, Helvetica, Arial, sans-serif" xml:space="preserve" data-magdobe-text-box="30.0 40.0 180.0 60.0">
+<title>Type</title>
+<tspan x="30.0" y="63.0">Office &amp; café&#10;</tspan><tspan x="30.0" y="91.0">Second line that </tspan><tspan x="30.0" y="119.0">wraps and </tspan><tspan x="30.0" y="147.0">continues</tspan></text>
+</g>
+</g></svg>

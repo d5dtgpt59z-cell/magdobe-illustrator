@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>Magdobe SVG rendering validation</title>
+<style>body{font:16px system-ui;background:#f3e9d3;color:#30281f;padding:24px}h1{font-size:24px}section{margin:28px 0;padding:16px;background:#fff9ec;border-radius:12px}figure{margin:0}canvas{max-width:100%;height:auto;background:white;border:1px solid #ccb}main{display:grid;grid-template-columns:1fr 1fr;gap:18px}pre{white-space:pre-wrap;font:13px ui-monospace}label{font-weight:600}</style>
+<h1>Magdobe SVG rendering validation</h1><p>Independent browser SVG rendering compared with the native Magdobe renderer. This does not test Adobe Illustrator.</p><div id="results">Loading comparisons…</div>
+<script>
+const cases=[['Complex illustration','Optimus-and-GPK-2199-editable.svg','native-reference.png',1024,1536],['Outlined text','text-outlined.svg','text-native.png',240,150],['Editable text','text-editable.svg','text-native.png',240,150],['Separate fill and stroke opacity','transparency.svg','transparency-native.png',80,80]];
+const results=document.querySelector('#results');results.textContent='';
+const load=url=>new Promise((resolve,reject)=>{const img=new Image;img.onload=()=>resolve(img);img.onerror=()=>reject(Error(url));img.src=url});
+(async()=>{for(const [title,svg,png,w,h] of cases){const section=document.createElement('section');results.append(section);const heading=document.createElement('h2');heading.textContent=title;section.append(heading);try{
+const images=await Promise.all([load(svg),load(png)]),grids=document.createElement('main');section.append(grids);const pixels=[];
+for(let i=0;i<2;i++){const fig=document.createElement('figure'),label=document.createElement('label');label.textContent=i===0?'SVG in browser':'Native renderer';const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='white';ctx.fillRect(0,0,w,h);ctx.drawImage(images[i],0,0,w,h);pixels.push(ctx.getImageData(0,0,w,h).data);fig.append(label,c);grids.append(fig)}
+let sum=0,differing=0,max=0;for(let p=0;p<pixels[0].length;p+=4){let peak=0;for(let c=0;c<3;c++){const d=Math.abs(pixels[0][p+c]-pixels[1][p+c]);sum+=d;peak=Math.max(peak,d);max=Math.max(max,d)}if(peak>16)differing++}
+const mean=sum/(w*h*3),changed=100*differing/(w*h),report=document.createElement('pre');report.textContent=JSON.stringify({meanChannelError:mean.toFixed(4),pixelsOver16LevelsPercent:changed.toFixed(4),maxChannelError:max},null,2);section.append(report);
+}catch(e){section.append('ERROR: '+e.message)}}document.body.dataset.complete='true'})();
+</script>

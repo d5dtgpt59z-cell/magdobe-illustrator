@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="80.0pt" height="80.0pt" viewBox="0 0 80.0 80.0" preserveAspectRatio="xMinYMin meet" overflow="hidden">
+<title>Magdobe Illustrator artwork</title>
+<defs>
+<clipPath id="magdobe_artboard_clip" clipPathUnits="userSpaceOnUse"><rect x="0" y="0" width="80.0" height="80.0"/></clipPath>
+</defs>
+<g id="magdobe_artwork" clip-path="url(#magdobe_artboard_clip)">
+<g id="layer_5993462d-2a08-4da9-a5c6-8c09cc87271a" data-name="Transparent fill and stroke"><title>Transparent fill and stroke</title>
+<g id="object_5993462d-2a08-4da9-a5c6-8c09cc87271a" data-name="Transparent fill and stroke" data-magdobe-paints="separate"><title>Transparent fill and stroke</title>
+<rect id="paint_fill_5993462d-2a08-4da9-a5c6-8c09cc87271a" x="20.0" y="20.0" width="40.0" height="40.0" fill="rgb(100.0%,0%,0%)" fill-opacity="1.0" opacity="0.5" fill-rule="nonzero" stroke="none"></rect>
+<rect id="paint_stroke_5993462d-2a08-4da9-a5c6-8c09cc87271a" x="20.0" y="20.0" width="40.0" height="40.0" fill="none" stroke="rgb(0%,0%,100.0%)" stroke-opacity="1.0" stroke-width="10.0" opacity="0.5" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10"></rect>
+</g>
+</g>
+</g></svg>

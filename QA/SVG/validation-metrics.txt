@@ -1,0 +1,7 @@
+Objects: 2199
+Anchors: 125093
+SVG bytes: 6628023
+Serialize seconds: 0.4108119010925293
+Atomic file export seconds: 0.4966869354248047
+Native bitmap reference: native-reference.png
+Adobe Illustrator: unavailable; not tested
