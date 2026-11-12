@@ -150,9 +150,10 @@ struct VectorProject: Codable, Equatable {
     var width: Double = 1000
     var height: Double = 800
     var shapes: [VectorShape] = []
+    var hierarchy: [VectorNode]? = nil
 
     func validated() throws -> VectorProject {
-        guard version == 1 else { throw ValidationError.unsupportedVersion }
+        guard version == 1 || version == 2 else { throw ValidationError.unsupportedVersion }
         guard width.isFinite, height.isFinite, (1...100_000).contains(width), (1...100_000).contains(height), shapes.count <= 100_000 else { throw ValidationError.invalidGeometry }
         guard Set(shapes.map(\.id)).count == shapes.count else { throw ValidationError.invalidGeometry }
         func valid(_ n: Double) -> Bool { n.isFinite && abs(n) <= 10_000_000 }
@@ -168,10 +169,15 @@ struct VectorProject: Codable, Equatable {
                       anchor.outgoing.map(validPoint) ?? true else { throw ValidationError.invalidGeometry }
             } }
         }
+        try validateHierarchy()
         return self
     }
     enum ValidationError: LocalizedError {
-        case unsupportedVersion, invalidGeometry
-        var errorDescription: String? { self == .unsupportedVersion ? "This document uses an unsupported version." : "This document contains invalid vector geometry." }
+        case unsupportedVersion, invalidGeometry, invalidHierarchy
+        var errorDescription: String? { switch self {
+            case .unsupportedVersion: return "This document uses an unsupported version."
+            case .invalidGeometry: return "This document contains invalid vector geometry."
+            case .invalidHierarchy: return "This document contains an invalid layer hierarchy."
+            } }
     }
 }

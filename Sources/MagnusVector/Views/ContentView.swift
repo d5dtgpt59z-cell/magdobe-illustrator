@@ -16,6 +16,17 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }.padding(.horizontal, 16).frame(height: 38)
             Divider()
+            if let groupID = session.isolatedGroupID {
+                HStack(spacing: 8) {
+                    Button { session.exitGroup() } label: { Label("Back", systemImage: "chevron.left") }
+                        .buttonStyle(.borderless).help("Exit this group (Escape)")
+                    Image(systemName: "folder")
+                    Text("Editing \(document.project.hierarchyIndex.nodes[groupID]?.name ?? "Group")").fontWeight(.medium)
+                    Text("Double-click a nested group to go deeper").foregroundStyle(.secondary)
+                    Spacer()
+                }.font(.system(size: 11)).padding(.horizontal, 16).frame(height: 30)
+                Divider()
+            }
             HStack(spacing: 0) {
                 ToolRail(session: session)
                 Divider()
@@ -61,7 +72,7 @@ struct ContentView: View {
                 } label: { Label("Export", systemImage: "square.and.arrow.up") }.help("Export artwork as SVG, PDF, or PNG")
             }
         }
-        .alert("Couldn’t export", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) { Button("OK") { session.error = nil } } message: { Text(session.error ?? "") }
+        .alert("Couldn’t complete the action", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) { Button("OK") { session.error = nil } } message: { Text(session.error ?? "") }
     }
 }
 

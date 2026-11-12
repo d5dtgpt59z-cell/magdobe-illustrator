@@ -1,4 +1,4 @@
-# SVG export in Magdobe Illustrator 0.3
+# SVG export in Magdobe Illustrator
 
 ## Result and usage
 
@@ -8,7 +8,7 @@ The document is captured as a value snapshot. Export does not finish an active p
 
 ## Audit and supported data
 
-The existing document has one artboard and a flat, ordered array of rectangles, ellipses, cubic Bézier paths (including compound contours), and text. The Layers panel displays that array in reverse visual order; drawing and SVG serialization use its original back-to-front order. Position and scale are already applied to stored geometry. Colors are sRGB. Stroke caps and joins are fixed to round in the existing renderer.
+The document has one artboard and an ordered array of rectangles, ellipses, cubic Bézier paths (including compound contours), and text. Version 0.4 adds an ordered hierarchy referencing those same objects; nested layers and groups export as nested SVG groups. The renderer order and hierarchy leaf order are kept identical. Legacy flat documents remain supported. Position and scale are already applied to stored geometry. Colors are sRGB. Stroke caps and joins are fixed to round in the existing renderer.
 
 The previous SVG code used four decimal places, omitted hidden objects, had no stable IDs, and exported synchronously. `VectorExporter` now delegates SVG to `SVGExporter`; PDF/PNG rendering remains unchanged. Native copy still puts editable SVG on the clipboard through the same serializer.
 
@@ -20,7 +20,7 @@ The exporter preserves:
 - Fills, strokes, widths, color alpha, object opacity, round caps and round joins.
 - Hidden geometry using `display="none"`; stable UUID-based object/group IDs; Unicode names in `title` and `data-name`.
 - Artboard clipping with an explicit `clipPathUnits="userSpaceOnUse"` rectangle. Text has a separate rectangular clipping path for its native text box.
-- Named object groups when Preserve editable layers is enabled. Disabling it removes only optional wrappers; objects, names and geometry remain.
+- Actual nested layer/group containers when Preserve editable layers is enabled. Legacy flat documents retain their named object wrappers. Disabling this option removes wrappers and applies inherited visibility/locks to each exported object; stacking, names and geometry remain.
 
 SVG dimensions use explicit `pt` units with an unchanged document-coordinate `viewBox`, matching the editor's Core Graphics/PDF point dimensions. A browser using 96 CSS pixels per inch may report a different intrinsic pixel width; the viewBox coordinates are unchanged. When Export entire artboard is off, the viewport fits visible drawing bounds, including stroke extents and off-artboard geometry, while leaving object coordinates intact. Empty drawings report an error in this mode.
 
@@ -30,9 +30,9 @@ Optimize SVG only removes XML formatting whitespace. It never changes numerical 
 
 **Adobe Illustrator is not installed in this development environment. No actual Illustrator open/edit test has been performed.** This implementation emits standards-based SVG 1.1, and has been validated structurally, by geometry round-trip, and by an independent browser renderer. Those checks are not a substitute for opening the sample in Illustrator.
 
-SVG has groups rather than a portable native layer model. The safest portable representation of Magdobe's current Layers rows is named `g` elements. Illustrator may import those as groups inside a layer, and may choose IDs rather than title/data-name values as its displayed labels. Native Illustrator layer metadata or proprietary Adobe editing payloads are not generated. Lock state has a Magdobe attribute for bookkeeping, but SVG has no interoperable editing lock, so Illustrator need not enforce it.
+SVG has groups rather than a portable native layer model. The safest portable representation of Magdobe's layers and groups is named `g` elements. Illustrator may import those as groups inside a layer, and may choose IDs rather than title/data-name values as its displayed labels. Native Illustrator layer metadata or proprietary Adobe editing payloads are not generated. Lock state has a Magdobe attribute for bookkeeping, but SVG has no interoperable editing lock, so Illustrator need not enforce it.
 
-Magdobe does not currently model gradients, nested groups/layers, arbitrary object clips/masks, rotation matrices, non-round stroke styles, dash patterns, blend modes, placed bitmaps, or multiple artboards. These are existing editor limitations, not features silently dropped from a supported document. No new document schema or drawing tools were introduced for this export change. Existing move/resize operations remain baked into the exported geometry.
+Magdobe does not currently model gradients, arbitrary object clips/masks, rotation matrices, non-round stroke styles, dash patterns, blend modes, placed bitmaps, or multiple artboards. These are existing editor limitations, not features silently dropped from a supported document. The original 0.3 exporter introduced no schema changes. Version 0.4 adds the native hierarchy schema described in [groups and layers](groups-and-layers.md). Existing move/resize operations remain baked into the exported geometry.
 
 Core Graphics applies object alpha separately to fill and stroke paint operations. SVG element opacity normally composites those operations together. For an object with both fill and stroke and opacity below 1, the exporter keeps a named object group containing separate native fill and stroke geometry, each with the original object opacity. This preserves their overlap appearance. It can produce two editable geometry elements for one Magdobe object; unrelated objects are never merged. The actual 2,199-object illustration is fill-only and exports as exactly 2,199 path elements.
 
@@ -40,7 +40,7 @@ Editable text uses explicit line baselines from the native TextKit layout, the s
 
 Invalid XML control characters cause an actionable export error instead of creating malformed XML or silently deleting names/text. The original document remains unchanged.
 
-## Validation
+## Original 0.3 export validation
 
 Run from the project directory:
 

@@ -34,7 +34,7 @@ struct EditorCommands: Commands {
             Button("Select All") {
                 if let text = NSApp.keyWindow?.firstResponder as? NSTextView { text.selectAll(nil); return }
                 guard let session else { return }
-                session.finishPath(); session.selection = Set(session.document.project.shapes.filter { $0.visible && !$0.locked }.map(\.id))
+                session.selectAll()
             }.keyboardShortcut("a")
             Button("Deselect") { session?.selection = [] }.keyboardShortcut("a", modifiers: [.command, .shift])
         }
@@ -46,6 +46,13 @@ struct EditorCommands: Commands {
             Button("Draw with Codex…") { session?.showGeneration = true }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(session == nil)
         }
         CommandMenu("Object") {
+            Button("Group") { session?.groupSelection() }.keyboardShortcut("g").disabled(session?.canGroup != true)
+            Button("Ungroup") { session?.ungroupSelection() }.keyboardShortcut("g", modifiers: [.command, .option]).disabled(session?.canUngroup != true)
+            Button("New Layer") { session?.newLayer() }.keyboardShortcut("n", modifiers: [.command, .shift]).disabled(session == nil)
+            Button("Edit Inside Group") { if let node = session?.selectedNode { session?.enterGroup(node.id) } }
+                .disabled(session?.selectedNode?.kind != .group)
+            Button("Exit Group") { session?.exitGroup() }.keyboardShortcut(.escape, modifiers: []).disabled(session?.isolatedGroupID == nil)
+            Divider()
             Button("Convert to Path") { session?.modifySelection("Convert to Path") { $0.convertToPath() }; session?.selectTool(.node) }
                 .keyboardShortcut("o", modifiers: [.command, .shift]).disabled(session?.selection.isEmpty != false)
             Divider()

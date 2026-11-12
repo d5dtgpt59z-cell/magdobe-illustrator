@@ -8,20 +8,23 @@ struct InspectorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     sectionTitle("PROPERTIES")
-                    if let shape = session.selectedShape {
-                        TextField("Object name", text: Binding(get: { session.selectedShape?.name ?? "" }, set: { value in session.modifySelection("Rename") { $0.name = value } }))
-                            .font(.headline).textFieldStyle(.plain).help("Rename the selected object")
-                        transform(shape)
+                    if let node = session.selectedNode {
+                        TextField("Object name", text: Binding(get: { session.selectedShape?.name ?? session.selectedNode?.name ?? "" }, set: { session.renameSelection($0) }))
+                            .font(.headline).textFieldStyle(.plain).help("Rename the selected object, group, or layer")
+                        if node.kind != .object {
+                            Text("\(node.kind.rawValue.capitalized) · \(session.selectedShapes.count) objects").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let bounds = session.selectionBounds { transform(bounds) }
                     } else {
-                        Text(session.selection.isEmpty ? "Artboard" : "\(session.selection.count) objects").font(.headline)
+                        Text(session.selection.isEmpty ? "Artboard" : "\(session.selection.count) selected").font(.headline)
                         if session.selection.isEmpty {
                             HStack {
                                 NumericField(label: "W", value: document.project.width) { v in if (1...100_000).contains(v) { session.edit("Resize Artboard") { $0.width = v }; session.fit() } }
                                 NumericField(label: "H", value: document.project.height) { v in if (1...100_000).contains(v) { session.edit("Resize Artboard") { $0.height = v }; session.fit() } }
                             }
-                        }
+                        } else if let bounds = session.selectionBounds { transform(bounds) }
                     }
-                    appearance
+                    appearance.disabled(!session.selection.isEmpty && session.editableShapeIDs.isEmpty)
                     if let shape = session.selectedShape, shape.kind == .text { textProperties(shape) }
                     if !session.selection.isEmpty { alignment }
                     if let shape = session.selectedShape, shape.kind == .rectangle || shape.kind == .ellipse {
@@ -39,50 +42,22 @@ struct InspectorView: View {
                 }.padding(16)
             }
             Divider()
-            HStack {
-                sectionTitle("LAYERS")
-                Spacer()
-                Text("\(document.project.shapes.count)").font(.caption).foregroundStyle(.secondary)
-            }.padding(.horizontal, 16).padding(.vertical, 12)
-            if document.project.shapes.isEmpty {
-                ContentUnavailableView("No objects yet", systemImage: "square.3.layers.3d").frame(height: 190)
-            } else {
-                List(selection: $session.selection) {
-                    ForEach(document.project.shapes.reversed()) { shape in
-                        HStack(spacing: 7) {
-                            Image(systemName: shape.kind == .ellipse ? "circle" : shape.kind == .text ? "textformat" : shape.kind == .path ? "point.topleft.down.to.point.bottomright.curvepath" : "rectangle")
-                                .foregroundStyle((shape.fill ?? shape.stroke ?? .ink).color).frame(width: 16)
-                            Text(shape.name).lineLimit(1).foregroundStyle(shape.visible ? .primary : .secondary)
-                            Spacer(minLength: 0)
-                            Button { toggle(shape.id, key: "locked") } label: { Image(systemName: shape.locked ? "lock.fill" : "lock.open").foregroundStyle(.secondary) }.buttonStyle(.borderless).help(shape.locked ? "Unlock" : "Lock")
-                            Button { toggle(shape.id, key: "visible") } label: { Image(systemName: shape.visible ? "eye" : "eye.slash").foregroundStyle(.secondary) }.buttonStyle(.borderless).help(shape.visible ? "Hide" : "Show")
-                        }.font(.system(size: 12)).tag(shape.id).help("Select \(shape.name). Shift-click to select multiple objects.")
-                    }
-                }.scrollContentBackground(.hidden).listStyle(.sidebar).frame(minHeight: 170, idealHeight: 250, maxHeight: 290)
-            }
-            Divider()
-            HStack {
-                Button { session.duplicate() } label: { Image(systemName: "plus.square.on.square") }.help("Duplicate (⌘D)")
-                Button { session.reorder(true) } label: { Image(systemName: "square.3.layers.3d.top.filled") }.help("Bring to front")
-                Button { session.reorder(false) } label: { Image(systemName: "square.3.layers.3d.bottom.filled") }.help("Send to back")
-                Spacer()
-                Button { session.deleteSelection() } label: { Image(systemName: "trash") }.help("Delete")
-            }.buttonStyle(.borderless).disabled(session.selection.isEmpty).padding(14)
+            LayersView(session: session, document: document)
         }.background(PaperTexture.surface)
     }
     private func sectionTitle(_ title: String) -> some View { Text(title).font(.system(size: 10, weight: .semibold)).tracking(1.3).foregroundStyle(.secondary) }
-    private func transform(_ shape: VectorShape) -> some View {
+    private func transform(_ bounds: CGRect) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionTitle("TRANSFORM")
             HStack {
-                NumericField(label: "X", value: shape.bounds.minX) { session.setGeometry("x", value: $0) }
-                NumericField(label: "Y", value: shape.bounds.minY) { session.setGeometry("y", value: $0) }
+                NumericField(label: "X", value: bounds.minX) { session.setGeometry("x", value: $0) }
+                NumericField(label: "Y", value: bounds.minY) { session.setGeometry("y", value: $0) }
             }
             HStack {
-                NumericField(label: "W", value: shape.bounds.width) { session.setGeometry("width", value: $0) }
-                NumericField(label: "H", value: shape.bounds.height) { session.setGeometry("height", value: $0) }
+                NumericField(label: "W", value: bounds.width) { session.setGeometry("width", value: $0) }
+                NumericField(label: "H", value: bounds.height) { session.setGeometry("height", value: $0) }
             }
-        }
+        }.disabled(session.editableShapeIDs.isEmpty)
     }
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -129,13 +104,7 @@ struct InspectorView: View {
             NumericField(label: "Size", value: shape.fontSize) { value in session.modifySelection("Font Size") { $0.fontSize = max(1, min(2000, value)) } }
         }
     }
-    private func toggle(_ id: UUID, key: String) {
-        session.edit(key == "locked" ? "Toggle Lock" : "Toggle Visibility") { p in
-            guard let i = p.shapes.firstIndex(where: { $0.id == id }) else { return }
-            if key == "locked" { p.shapes[i].locked.toggle() } else { p.shapes[i].visible.toggle() }
-        }
-        if let s = document.project.shapes.first(where: { $0.id == id }), s.locked || !s.visible { session.selection.remove(id) }
-    }
+
 }
 
 struct NumericField: View {

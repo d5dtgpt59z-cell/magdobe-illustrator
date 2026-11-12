@@ -23,6 +23,8 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     private var down = CGPoint.zero
     private var lastViewPoint = CGPoint.zero
     private var baseline: [VectorShape] = []
+    private var baselineIndices: [UUID: Int] = [:]
+    private var dragShapeIDs: Set<UUID> = []
     private var initialSelection: Set<UUID> = []
     private var creating: UUID?
     private var moving = false
@@ -72,15 +74,16 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             for y in stride(from: 0.0, through: project.height, by: spacing) { ctx.move(to: CGPoint(x: 0, y: y)); ctx.addLine(to: CGPoint(x: project.width, y: y)) }
             ctx.strokePath()
         }
-        for shape in project.shapes { VectorRenderer.draw(shape, in: ctx) }
+        VectorRenderer.draw(project, in: ctx)
         ctx.restoreGState()
         let accent = NSColor.controlAccentColor
         ctx.setStrokeColor(accent.cgColor); ctx.setFillColor(accent.cgColor); ctx.setLineWidth(1 / session.zoom)
-        for shape in session.selectedShapes where shape.visible {
+        let hierarchy = project.hierarchyIndex
+        for shape in session.selectedShapes where !hierarchy.hidden.contains(shape.id) {
             ctx.addPath(shape.cgPath); ctx.strokePath()
             if session.tool == .node || shape.id == session.activePath { drawNodes(shape, context: ctx) }
         }
-        if session.tool == .select, let box = session.selectionBounds {
+        if session.tool == .select, !session.editableShapeIDs.isEmpty, let box = session.selectionBounds {
             ctx.setStrokeColor(accent.cgColor); ctx.stroke(box)
             for point in corners(box) { drawHandle(point, context: ctx, filled: false) }
         }
@@ -116,29 +119,40 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     }
     private func distance(_ a: CGPoint, _ b: CGPoint) -> Double { hypot(a.x - b.x, a.y - b.y) }
     private func pick(_ p: CGPoint) -> VectorShape? {
-        session.document.project.shapes.reversed().first { $0.visible && !$0.locked && $0.hitTest(p, tolerance: 5 / session.zoom) }
+        let index = session.document.project.hierarchyIndex
+        return session.document.project.shapes.reversed().first {
+            index.canvasTarget(for: $0.id, inside: session.isolatedGroupID) != nil && $0.hitTest(p, tolerance: 5 / session.zoom)
+        }
     }
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         down = world(location(event)); lastViewPoint = location(event)
         initialSelection = session.selection; baseline = session.document.project.shapes
+        baselineIndices = Dictionary(uniqueKeysWithValues: baseline.enumerated().map { ($0.element.id, $0.offset) })
         if spaceHeld || session.tool == .hand { panning = true; NSCursor.closedHand.set(); return }
         switch session.tool {
         case .select:
-            if let box = session.selectionBounds, !session.selectedShapes.contains(where: \.locked), let corner = corners(box).firstIndex(where: { distance($0, down) < 8 / session.zoom }) {
-                resizeCorner = corner; resizeBounds = box; session.beginTransaction(); return
+            if event.clickCount == 1, let box = session.selectionBounds, !session.editableShapeIDs.isEmpty, let corner = corners(box).firstIndex(where: { distance($0, down) < 8 / session.zoom }) {
+                resizeCorner = corner; resizeBounds = box; dragShapeIDs = session.editableShapeIDs; session.beginTransaction(); return
             }
-            if let hit = pick(down) {
+            if let hit = pick(down), let target = session.document.project.hierarchyIndex.canvasTarget(for: hit.id, inside: session.isolatedGroupID) {
+                if event.clickCount == 2, session.document.project.hierarchyIndex.nodes[target]?.kind == .group {
+                    session.enterGroup(target); needsDisplay = true; return
+                }
                 if event.modifierFlags.contains(.shift) {
-                    if session.selection.contains(hit.id) { session.selection.remove(hit.id) } else { session.selection.insert(hit.id) }
-                } else if !session.selection.contains(hit.id) { session.selection = [hit.id] }
-                moving = session.selection.contains(hit.id); if moving { session.beginTransaction() }
+                    if session.selection.contains(target) { session.selection.remove(target) } else { session.selection.insert(target) }
+                } else if !session.selection.contains(target) { session.selection = [target] }
+                dragShapeIDs = session.editableShapeIDs
+                moving = session.selection.contains(target) && !dragShapeIDs.isEmpty
+                if moving { session.beginTransaction() }
             } else {
+                if event.clickCount == 2, session.isolatedGroupID != nil { session.exitGroup(); needsDisplay = true; return }
                 if !event.modifierFlags.contains(.shift) { session.selection = [] }
                 marquee = CGRect(origin: down, size: .zero)
             }
         case .node:
-            for shape in session.selectedShapes where !shape.locked && shape.visible {
+            let editable = session.editableShapeIDs
+            for shape in session.selectedShapes where editable.contains(shape.id) && shape.visible {
                 for (c, contour) in shape.contours.enumerated() {
                 for (i, a) in contour.enumerated() {
                     for (handle, p) in [(1, a.incoming), (2, a.outgoing), (0, Optional(a.point))] {
@@ -151,14 +165,16 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             }
             session.selection = pick(down).map { [$0.id] } ?? []; session.selectedAnchor = nil
         case .rectangle, .ellipse:
+            guard let destination = session.insertionDestination() else { return }
             session.beginTransaction()
             let shape = session.makeShape(session.tool == .rectangle ? .rectangle : .ellipse, rect: CGRect(origin: down, size: .zero))
-            session.document.project.shapes.append(shape); creating = shape.id; session.selection = [shape.id]
+            session.document.project.appendShapes([shape], to: destination.parent); creating = shape.id; session.selection = [shape.id]
         case .pen: penDown(down)
         case .text:
+            guard let destination = session.insertionDestination() else { return }
             var shape = session.makeShape(.text, rect: CGRect(x: down.x, y: down.y, width: 360, height: 130))
             shape.fill = session.fill; shape.name = "Text"
-            session.edit("Add Text") { $0.shapes.append(shape) }; session.selection = [shape.id]; session.tool = .select
+            session.edit("Add Text") { $0.appendShapes([shape], to: destination.parent) }; session.selection = [shape.id]; session.tool = .select
         case .hand: break
         }
         needsDisplay = true
@@ -171,11 +187,12 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             }
             session.document.project.shapes[i].anchors.append(Anchor(p))
         } else {
+            guard let destination = session.insertionDestination() else { return }
             session.beginTransaction()
             var shape = session.makeShape(.path, rect: .zero); shape.anchors = [Anchor(p)]
             // Open paths start with a visible stroke, even when shape fill was the previous appearance.
             shape.fill = nil; shape.stroke = session.stroke; shape.strokeWidth = max(1, session.strokeWidth)
-            session.document.project.shapes.append(shape); session.activePath = shape.id; session.selection = [shape.id]
+            session.document.project.appendShapes([shape], to: destination.parent); session.activePath = shape.id; session.selection = [shape.id]
         }
     }
     override func mouseDragged(with event: NSEvent) {
@@ -201,8 +218,8 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             let target = normalized(opposite, end)
             guard resizeBounds.width > 0, resizeBounds.height > 0 else { return }
             let sx = max(0.001, target.width) / resizeBounds.width, sy = max(0.001, target.height) / resizeBounds.height
-            for original in baseline where session.selection.contains(original.id) && !original.locked {
-                guard let i = session.document.project.shapes.firstIndex(where: { $0.id == original.id }) else { continue }
+            for original in baseline where dragShapeIDs.contains(original.id) {
+                guard let i = baselineIndices[original.id] else { continue }
                 let b = original.bounds
                 var shape = original
                 shape.resize(to: CGRect(x: target.minX + (b.minX - resizeBounds.minX) * sx, y: target.minY + (b.minY - resizeBounds.minY) * sy, width: b.width * sx, height: b.height * sy))
@@ -218,15 +235,16 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             session.document.project.shapes[i].contours = contours
         } else if moving {
             if event.modifierFlags.contains(.shift) { if abs(delta.width) > abs(delta.height) { delta.height = 0 } else { delta.width = 0 } }
-            for original in baseline where session.selection.contains(original.id) && !original.locked {
-                if let i = session.document.project.shapes.firstIndex(where: { $0.id == original.id }) {
+            for original in baseline where dragShapeIDs.contains(original.id) {
+                if let i = baselineIndices[original.id] {
                     var shape = original; shape.translate(delta); session.document.project.shapes[i] = shape
                 }
             }
         } else if marquee != nil {
             marquee = normalized(down, p)
-            let hits = session.document.project.shapes.filter { $0.visible && !$0.locked && marquee!.intersects($0.bounds) }
-            session.selection = Set(hits.map(\.id)).union(event.modifierFlags.contains(.shift) ? initialSelection : [])
+            let index = session.document.project.hierarchyIndex
+            let hits = session.document.project.shapes.filter { marquee!.intersects($0.bounds) }
+            session.selection = Set(hits.compactMap { index.canvasTarget(for: $0.id, inside: session.isolatedGroupID) }).union(event.modifierFlags.contains(.shift) ? initialSelection : [])
         } else if session.tool == .pen, let id = session.activePath, let i = session.document.project.shapes.firstIndex(where: { $0.id == id }), let j = session.document.project.shapes[i].anchors.indices.last {
             let anchor = session.document.project.shapes[i].anchors[j].point
             session.document.project.shapes[i].anchors[j].outgoing = VectorPoint(p)
@@ -236,7 +254,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     }
     override func mouseUp(with event: NSEvent) {
         if let id = creating, let shape = session.document.project.shapes.first(where: { $0.id == id }), shape.width < 1 || shape.height < 1 {
-            session.document.project.shapes.removeAll { $0.id == id }; session.selection.remove(id)
+            session.document.project.removeNodes([id]); session.selection.remove(id)
         }
         if creating != nil || moving || resizeCorner != nil || nodeDrag != nil { session.endTransaction(creating != nil ? "Draw Shape" : nodeDrag != nil ? "Edit Anchor" : resizeCorner != nil ? "Resize" : "Move") }
         creating = nil; moving = false; panning = false; marquee = nil; resizeCorner = nil; nodeDrag = nil
@@ -263,7 +281,10 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
         case 49: spaceHeld = true; window?.invalidateCursorRects(for: self)
         case 51, 117: session.deleteSelection()
         case 36, 76: session.finishPath()
-        case 53: session.finishPath(); session.selection = []; session.selectedAnchor = nil
+        case 53:
+            session.finishPath()
+            if session.isolatedGroupID != nil { session.exitGroup() } else { session.selection = [] }
+            session.selectedAnchor = nil
         case 123: session.moveSelection(CGSize(width: -step, height: 0))
         case 124: session.moveSelection(CGSize(width: step, height: 0))
         case 125: session.moveSelection(CGSize(width: 0, height: step))
@@ -276,32 +297,13 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     override func keyUp(with event: NSEvent) { if event.keyCode == 49 { spaceHeld = false; window?.invalidateCursorRects(for: self) } else { super.keyUp(with: event) } }
     override func resignFirstResponder() -> Bool { spaceHeld = false; return super.resignFirstResponder() }
 
-    private static let vectorPasteboard = NSPasteboard.PasteboardType("com.builtbymagnus.vector.objects")
-    @objc func copy(_ sender: Any?) {
-        session.finishPath()
-        let shapes = session.selectedShapes
-        guard !shapes.isEmpty, let data = try? JSONEncoder().encode(shapes) else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setData(data, forType: Self.vectorPasteboard)
-        let project = VectorProject(width: session.document.project.width, height: session.document.project.height, shapes: shapes)
-        if let svg = try? VectorExporter.svg(project) { pasteboard.setString(svg, forType: .string) }
-    }
-    @objc func cut(_ sender: Any?) { copy(sender); session.deleteSelection() }
-    @objc func paste(_ sender: Any?) {
-        guard let data = NSPasteboard.general.data(forType: Self.vectorPasteboard),
-              let shapes = try? JSONDecoder().decode([VectorShape].self, from: data),
-              (try? VectorProject(shapes: shapes).validated()) != nil else { return }
-        let copies = shapes.map { original in
-            var s = original; s.id = UUID(); s.locked = false; s.translate(CGSize(width: 20, height: 20))
-            s.contours = s.contours.map { $0.map { a in var a = a; a.id = UUID(); return a } }
-            return s
-        }
-        session.edit("Paste") { $0.shapes.append(contentsOf: copies) }; session.selection = Set(copies.map(\.id))
-    }
+    override func selectAll(_ sender: Any?) { session.selectAll() }
+    @objc func copy(_ sender: Any?) { session.copySelection() }
+    @objc func cut(_ sender: Any?) { session.copySelection(); session.deleteSelection() }
+    @objc func paste(_ sender: Any?) { session.pasteSelection() }
     func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         if item.action == #selector(copy(_:)) || item.action == #selector(cut(_:)) { return !session.selection.isEmpty }
-        if item.action == #selector(paste(_:)) { return NSPasteboard.general.data(forType: Self.vectorPasteboard) != nil }
+        if item.action == #selector(paste(_:)) { return NSPasteboard.general.data(forType: EditorSession.vectorPasteboard) != nil }
         return true
     }
 }

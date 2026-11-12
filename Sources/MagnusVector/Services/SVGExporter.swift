@@ -63,7 +63,8 @@ enum SVGExporter {
     private static func viewport(_ project: VectorProject, options: SVGExportOptions) throws -> CGRect {
         if options.entireArtboard { return CGRect(x: 0, y: 0, width: project.width, height: project.height) }
         var bounds = CGRect.null
-        for s in project.shapes where s.visible {
+        let hidden = project.hierarchyIndex.hidden
+        for s in project.shapes where !hidden.contains(s.id) {
             var b = s.bounds
             if s.kind != .text, s.stroke != nil, s.strokeWidth > 0 {
                 b = b.union(s.cgPath.copy(strokingWithWidth: s.strokeWidth, lineCap: .round, lineJoin: .round, miterLimit: 10).boundingBoxOfPath)
@@ -93,12 +94,19 @@ enum SVGExporter {
         try line("</defs>")
         try line("<g id=\"magdobe_artwork\"\(options.entireArtboard ? " clip-path=\"url(#magdobe_artboard_clip)\"" : "")>")
         progress(0, project.shapes.count)
-        for (index, s) in project.shapes.enumerated() {
+        let hierarchy = project.hierarchyIndex
+        var completed = 0
+        func emitShape(_ original: VectorShape) throws {
+            var s = original
+            if !options.preserveEditableLayers {
+                s.visible = !hierarchy.hidden.contains(s.id)
+                s.locked = hierarchy.locked.contains(s.id)
+            }
             try Task.checkCancellation()
             try validateXML(s.name, field: "object name")
             if s.kind == .text { try validateXML(s.text, field: "text object") }
             let name = escape(s.name), id = objectID(s)
-            if options.preserveEditableLayers {
+            if options.preserveEditableLayers && project.hierarchy == nil {
                 try line("<g id=\"layer_\(s.id.uuidString.lowercased())\" data-name=\"\(name)\"><title>\(name)</title>")
             }
             // Named native objects retain order, visibility and IDs even when group wrappers are off.
@@ -139,9 +147,27 @@ enum SVGExporter {
                 }
             }
             }
-            if options.preserveEditableLayers { try line("</g>") }
-            if (index + 1) % 32 == 0 || index + 1 == project.shapes.count { progress(index + 1, project.shapes.count) }
+            if options.preserveEditableLayers && project.hierarchy == nil { try line("</g>") }
+            completed += 1
+            if completed % 32 == 0 || completed == project.shapes.count { progress(completed, project.shapes.count) }
         }
+        func emitNodes(_ nodes: [VectorNode]) throws {
+            for node in nodes {
+                try Task.checkCancellation()
+                if node.kind == .object, let i = hierarchy.shapeIndices[node.id] { try emitShape(project.shapes[i]) }
+                else {
+                    try validateXML(node.name, field: "layer or group name")
+                    if options.preserveEditableLayers {
+                        let name = escape(node.name)
+                        let identity = "id=\"\(node.kind.rawValue)_\(node.id.uuidString.lowercased())\" data-name=\"\(name)\" data-magdobe-kind=\"\(node.kind.rawValue)\""
+                        try line("<g \(identity)\(node.visible ? "" : " display=\"none\"")\(node.locked ? " data-magdobe-locked=\"true\"" : "")><title>\(name)</title>")
+                    }
+                    try emitNodes(node.children)
+                    if options.preserveEditableLayers { try line("</g>") }
+                }
+            }
+        }
+        try emitNodes(project.rootNodes)
         try line("</g></svg>")
     }
     private static func geometry(_ s: VectorShape, identity: String, appearance: String, title: String) -> String {

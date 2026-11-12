@@ -28,7 +28,8 @@ enum VectorRenderer {
     static func draw(_ project: VectorProject, in context: CGContext) {
         context.saveGState(); defer { context.restoreGState() }
         context.clip(to: CGRect(x: 0, y: 0, width: project.width, height: project.height))
-        for shape in project.shapes { draw(shape, in: context) }
+        let hidden = project.hierarchyIndex.hidden
+        for shape in project.shapes where !hidden.contains(shape.id) { draw(shape, in: context) }
     }
 }
 

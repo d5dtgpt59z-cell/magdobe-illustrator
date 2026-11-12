@@ -4,7 +4,7 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.3 adds precise, editable SVG export to the signed-in Codex image-to-vector workflow. It uses original source code and no Adobe binaries or assets.
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.4 combines real groups and nested layers, precise editable SVG export, and a signed-in Codex image-to-vector workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
 
 ## Open the app
 
@@ -49,7 +49,7 @@ Use **File → Export → SVG…** or the existing Export toolbar menu. Options 
 - Direct selection: drag individual anchors and control handles. Convert rectangles and ellipses to editable paths through Object → Convert to Path.
 - Selection, Shift multiselection, marquee selection, movement, corner resizing, and numeric position/size editing. Shift constrains shape proportions and movement.
 - Fill and stroke colors, alpha, stroke weight, object opacity, and quick color swatches.
-- Object list with selection, names, visibility, locks, and front/back stacking actions. These are object rows, not hierarchical groups yet.
+- Hierarchical groups and nested layers with names, disclosure controls, inherited visibility/locks, drag into containers, and Move to Layer context commands. Groups move/resize/align as units; double-click to edit inside and press Escape to exit. See [groups and layers](docs/groups-and-layers.md).
 - Alignment to the artboard for one object, or to the selection bounds for multiple objects.
 - Undo/redo, duplication, and native copy/cut/paste of vector objects between document windows. Copy also places SVG text on the clipboard. Standard text-field clipboard actions remain available.
 - Native document windows with New/Open/Save/Save As and `.mvector` JSON project files.
@@ -69,6 +69,9 @@ The canvas uses a white artboard as a viewing surface. Exports have no automatic
 | Move selection | Arrow keys; Shift for 10 units |
 | Copy / cut / paste | Command-C / X / V |
 | Duplicate | Command-D |
+| Group / ungroup | Command-G / Option-Command-G |
+| New layer | Shift-Command-N |
+| Exit group isolation | Escape |
 | Undo / redo | Command-Z / Shift-Command-Z |
 | Select all / deselect | Command-A / Shift-Command-A |
 | Convert to path | Shift-Command-O |
@@ -86,20 +89,22 @@ Tool-letter shortcuts apply when the canvas has focus. Enter a numeric inspector
 ./script/build_and_run.sh --verify
 ```
 
-Twenty-three tests cover project round trips, curve conversion/resizing, hit testing, compound contours and holes, compatibility with earlier projects, SVG XML/escaping, PDF/transparent PNG output, document validation, undo/redo, locks, duplication, and discarded single-anchor pen paths, and generated-artwork insertion with artboard sizing, compound contours, ID remapping, and undo/redo. The test script selects installed Xcode because some Command Line Tools installations do not include XCTest.
+The tests cover project round trips, curve conversion/resizing, hit testing, compound contours and holes, compatibility with earlier projects, SVG XML/escaping, PDF/transparent PNG output, document validation, undo/redo, locks, duplication, and discarded single-anchor pen paths, and generated-artwork insertion with artboard sizing, compound contours, ID remapping, and undo/redo. The test script selects installed Xcode because some Command Line Tools installations do not include XCTest.
 
 A live Codex App Server check generated a sample illustration through the existing ChatGPT sign-in and converted it into 16 editable objects. The native drawing panel completed the user-entered Optimus Prime versus Garbage Pail Kids request and displayed a vector preview containing 2,199 editable objects with Add to Canvas enabled.
 
 Native UI checks completed: drawing an ellipse; undo and redo; converting to a path; dragging an anchor; drawing a curved open pen path; inserting text; saving and reopening a three-object project; copying and pasting a vector object; undoing the paste; and exporting SVG. The drawing and exported SVG are in `QA/`.
 
+Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
+
 ## Next development stages
 
-1. Editing depth: rotate/reflect, hierarchical groups, node insertion/deletion, corner/smooth conversion, snapping, and rulers.
+1. Editing depth: rotate/reflect, node insertion/deletion, corner/smooth conversion, snapping, and rulers.
 2. Vector operations: boolean operations, clipping masks, gradients, and richer stroke controls.
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.3 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
+Version 0.4 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
 
 ## Source map
 
@@ -112,4 +117,6 @@ Version 0.3 does not import SVG/AI files or offer Illustrator feature parity. Di
 
 ## Project status and assets
 
-This is an early native editor, with source builds for local use. A notarized installer and general SVG import are not included. The icon and illustration regression fixtures were generated during development; they are examples, not official brand or character artwork. No open-source license has been selected for this repository.
+This is an early native editor, with source builds for local use. A notarized installer and general SVG import are not included. The application source is available under the [MIT license](LICENSE). Clone it, try it, break it, improve it. Make something.
+
+The icon and illustration regression fixtures were generated during development; they are examples, not official brand or character artwork. Third-party names, characters and trademarks remain the property of their respective owners; the software license does not grant rights to those properties.
