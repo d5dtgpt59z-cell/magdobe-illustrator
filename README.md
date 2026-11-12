@@ -120,7 +120,7 @@ A live Codex App Server check generated a sample illustration through the existi
 
 Native UI checks completed: drawing an ellipse; undo and redo; converting to a path; dragging an anchor; drawing a curved open pen path; inserting text; saving and reopening a three-object project; copying and pasting a vector object; undoing the paste; and exporting SVG. The drawing and exported SVG are in `QA/`.
 
-The current native suite has 59 passing tests, including all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Four additional Python tests use the pinned tracer to check retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+The current native suite has 62 passing tests, including all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Four additional Python tests use the pinned tracer to check retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
 
 Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
 
@@ -131,7 +131,7 @@ Groups/layers tests also cover native outline selection, nested selection/isolat
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.7 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
+Version 0.7.1 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
 
 ## Source map
 
