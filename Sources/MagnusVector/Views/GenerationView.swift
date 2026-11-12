@@ -3,6 +3,7 @@ import SwiftUI
 struct GenerationView: View {
     @ObservedObject var session: EditorSession
     @StateObject private var generation = GenerationStore()
+    @State private var showPreviewExport = false
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(spacing: 0) {
@@ -16,7 +17,7 @@ struct GenerationView: View {
             }.padding(24)
             Divider()
             HStack(alignment: .top, spacing: 24) {
-                VStack(alignment: .leading, spacing: 14) {
+                ScrollView { VStack(alignment: .leading, spacing: 14) {
                     Text("What would you like to draw?").font(.headline)
                     TextEditor(text: $generation.prompt).font(.body).scrollContentBackground(.hidden)
                         .padding(8).frame(height: 128).background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
@@ -26,8 +27,18 @@ struct GenerationView: View {
                         picker("Style", selection: $generation.style, values: ["Illustration", "Clean vector", "Painted detail"], help: "Choose the visual style for Codex to draw")
                         picker("Format", selection: $generation.format, values: ["Square", "Portrait", "Landscape"], help: "Choose the composition of the generated image")
                     }
-                    picker("Vector detail", selection: $generation.detail, values: ["Simple", "Balanced", "Detailed"], help: "Higher detail preserves more shading and creates more editable paths")
-                    Text("Detailed shading becomes colored shapes. Fine texture is simplified; text becomes outlines.").font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Vector detail").font(.caption).foregroundStyle(.secondary)
+                        Picker("Vector detail", selection: $generation.detail) {
+                            ForEach(ArtworkDetail.allCases) { Text($0.rawValue).tag($0) }
+                        }.labelsHidden().help("Controls how closely vector paths retain the source image’s colors and small details")
+                    }
+                    Text(generation.detail.explanation).font(.caption).foregroundStyle(.secondary)
+                    if generation.savedSource != nil {
+                        Button(generation.project == nil ? "Rebuild Last Image" : "Rebuild These Vectors") { generation.rebuildVectors() }
+                            .help("Re-trace the saved source at the selected detail. Uses no new image generation and leaves existing canvas artwork unchanged.")
+                        Text("Rebuild uses the saved source image. No new Codex image request.").font(.caption2).foregroundStyle(.secondary)
+                    }
                     HStack {
                         Button { generation.chooseReference() } label: { Label(generation.reference == nil ? "Add Reference…" : "Change Reference…", systemImage: "photo") }.help("Choose an image for Codex to use as a visual reference")
                         if generation.reference != nil {
@@ -47,7 +58,7 @@ struct GenerationView: View {
                         .disabled(!generation.connected || generation.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || generation.busy)
                         .help("Ask Codex to draw one image, then turn it into editable vector shapes")
                     Button("Vectorize an Existing Image…") { generation.chooseImage() }.disabled(generation.busy).help("Convert a PNG, JPEG, or WebP locally without calling Codex")
-                }.frame(width: 350).disabled(generation.busy)
+                }.frame(maxWidth: .infinity, alignment: .leading) }.frame(width: 350).disabled(generation.busy)
                 VStack(spacing: 12) {
                     if generation.project != nil {
                         Picker("Preview", selection: $generation.showVectors) { Text("Editable vectors").tag(true); Text("Source image").tag(false) }
@@ -67,15 +78,21 @@ struct GenerationView: View {
                     }.frame(maxWidth: .infinity, minHeight: 330, maxHeight: .infinity)
                     if generation.busy { ProgressView().controlSize(.small) }
                     if !generation.stage.isEmpty { Text(generation.stage).font(.caption).foregroundStyle(.secondary) }
+                    if !generation.busy, let detail = generation.resultDetail, let project = generation.project {
+                        Text("Preview: \(detail.rawValue) · \(project.shapes.count.formatted()) objects. Adding creates new artwork; existing canvas objects stay unchanged.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                     if let error = generation.error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
                     HStack {
                         if generation.busy { Button("Cancel") { generation.cancel() }.help("Stop this request and keep your current document") }
                         if generation.project != nil {
                             Button("Show Files") { generation.revealFiles() }.help("Open the folder containing the source image, prompt, SVG, and project")
                             Spacer()
+                            Button("Export SVG…") { showPreviewExport = true }.disabled(generation.busy)
+                                .help("Save these preview vectors using the standard SVG exporter, without inserting them into the canvas")
                             Button("Add to Canvas") {
                                 if let project = generation.project { session.insertArtwork(project) }; dismiss()
-                            }.buttonStyle(.borderedProminent).help("Insert the generated vectors as a single undoable action")
+                            }.buttonStyle(.borderedProminent).disabled(generation.busy).help("Insert the generated vectors as a single undoable action")
                         }
                     }
                 }.frame(minWidth: 350)
@@ -86,6 +103,9 @@ struct GenerationView: View {
         .preferredColorScheme(.light)
         .tint(PaperTexture.accent)
         .interactiveDismissDisabled(generation.busy)
+        .sheet(isPresented: $showPreviewExport) {
+            if let project = generation.project { SVGExportView(session: session, artwork: project) }
+        }
         .task { await generation.checkConnection() }
         .onDisappear { generation.cancel() }
     }

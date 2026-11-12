@@ -6,6 +6,21 @@ from xml.etree import ElementTree as ET
 
 server = None
 
+# Keep the existing three presets stable; Ultra is opt-in for dense illustrations.
+TRACE_PRESETS = {
+    'Simple': dict(filter_speckle=32, color_precision=5, layer_difference=40, length_threshold=6, path_precision=2),
+    'Balanced': dict(filter_speckle=16, color_precision=6, layer_difference=24, length_threshold=4, path_precision=2),
+    'Detailed': dict(filter_speckle=8, color_precision=7, layer_difference=16, length_threshold=3, path_precision=2),
+    'Ultra': dict(filter_speckle=2, color_precision=8, layer_difference=6, length_threshold=2.5, path_precision=4),
+}
+MAX_TRACE_OBJECTS = 80000
+MAX_TRACE_ANCHORS = 750000
+
+def trace_options(detail):
+    if detail not in TRACE_PRESETS:
+        raise ValueError('Unknown vector detail. Choose Simple, Balanced, Detailed, or Ultra.')
+    return dict(TRACE_PRESETS[detail])
+
 def emit(stage, **values):
     print(json.dumps(dict(stage=stage, **values)), flush=True)
 
@@ -30,7 +45,7 @@ class Codex:
                 except ValueError: pass
             self.q.put(None)
         threading.Thread(target=read,daemon=True).start()
-        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.2.0'},'capabilities':{'experimentalApi':True}})
+        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.6.0'},'capabilities':{'experimentalApi':True}})
         self.send({'method':'initialized','params':{}})
     def send(self, message):
         self.proc.stdin.write(json.dumps(message)+'\n'); self.proc.stdin.flush()
@@ -98,15 +113,15 @@ def trace(source, job, detail):
     import vtracer
     from svgpathtools import parse_path, CubicBezier, QuadraticBezier, Line
     emit('tracing',message='Converting colors and shading into editable paths…')
-    presets={'Simple':(32,5,40,6), 'Balanced':(16,6,24,4), 'Detailed':(8,7,16,3)}
-    speckle,precision,difference,length=presets.get(detail,presets['Balanced'])
+    options = trace_options(detail)
     svgfile=job/'artwork.svg'
-    vtracer.convert_image_to_svg_py(str(source),str(svgfile),colormode='color',hierarchical='stacked',mode='spline',filter_speckle=speckle,color_precision=precision,layer_difference=difference,corner_threshold=60,length_threshold=length,max_iterations=10,splice_threshold=45,path_precision=2)
+    vtracer.convert_image_to_svg_py(str(source),str(svgfile),colormode='color',hierarchical='stacked',mode='spline',corner_threshold=60,max_iterations=10,splice_threshold=45,**options)
     root=ET.parse(svgfile).getroot();shapes=[];nodes=0
-    def point(z,offset):return dict(x=round(z.real+offset.real,3),y=round(z.imag+offset.imag,3))
+    # Do not round a four-decimal Ultra trace back down while importing it.
+    def point(z,offset):return dict(x=z.real+offset.real,y=z.imag+offset.imag)
     def anchor(z,offset):return dict(id=str(uuid.uuid4()).upper(),point=point(z,offset))
     paths=root.findall('{http://www.w3.org/2000/svg}path')
-    if len(paths)>20000: raise RuntimeError('This image produces too many shapes. Retry with Simple detail.')
+    if len(paths)>MAX_TRACE_OBJECTS: raise RuntimeError(f'This trace has {len(paths):,} paths, above the {MAX_TRACE_OBJECTS:,}-object limit. Choose a lower Vector detail setting. Your previous result is unchanged.')
     for i,element in enumerate(paths):
         if i%100==0: emit('tracing',message=f'Building path {i+1:,} of {len(paths):,}…')
         transform=element.get('transform','translate(0,0)')
@@ -126,14 +141,16 @@ def trace(source, job, detail):
                 if 'incoming' in anchors[-1]:anchors[0]['incoming']=anchors[-1]['incoming']
                 anchors.pop()
             contours.append(anchors);nodes+=len(anchors)
-        if nodes>750000:raise RuntimeError('This image is too complex. Retry with Simple detail.')
+        if nodes>MAX_TRACE_ANCHORS:raise RuntimeError(f'This trace exceeds {MAX_TRACE_ANCHORS:,} anchors. Choose a lower Vector detail setting. Your previous result is unchanged.')
         if not contours:continue
         fill=element.get('fill');rgb=[int(fill[j:j+2],16)/255 for j in (1,3,5)]
         s=dict(id=str(uuid.uuid4()).upper(),name=f'Artwork / color {i+1:04} {fill}',kind='path',x=0,y=0,width=0,height=0,anchors=contours[0],closed=True,fill=dict(red=rgb[0],green=rgb[1],blue=rgb[2],alpha=1),strokeWidth=0,opacity=1,visible=True,locked=False,text='',fontSize=48)
         if len(contours)>1:s['subpaths']=contours[1:]
         shapes.append(s)
     project=dict(version=1,width=float(root.get('width')),height=float(root.get('height')),shapes=shapes)
-    target=job/'artwork.mvector';target.write_text(json.dumps(project,separators=(',',':')))
+    target=job/'artwork.mvector';temporary=job/'artwork.mvector.tmp'
+    temporary.write_text(json.dumps(project,separators=(',',':')));temporary.replace(target)
+    (job/'trace-info.json').write_text(json.dumps(dict(detail=detail,settings=options,objects=len(shapes),anchors=nodes,width=project['width'],height=project['height']),indent=2))
     emit('done',project=str(target),image=str(source),objects=len(shapes),anchors=nodes,message=f'{len(shapes):,} editable objects ready')
 
 def main():
@@ -146,7 +163,7 @@ def main():
         emit('connecting',message='Connecting to Codex…');source=Codex(args.codex).generate(job,request);stop()
     else:
         source=job/'source.png';shutil.copyfile(request['image'],source)
-    trace(source,job,request.get('detail','Balanced'))
+    trace(source,job,request.get('detail','Detailed'))
 
 if __name__=='__main__':
     try:main()

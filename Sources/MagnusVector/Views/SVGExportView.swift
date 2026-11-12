@@ -52,6 +52,8 @@ final class SVGExportStore: ObservableObject {
 
 struct SVGExportView: View {
     @ObservedObject var session: EditorSession
+    var artwork: VectorProject? = nil
+    private var project: VectorProject { artwork ?? session.document.project }
     @StateObject private var exporter = SVGExportStore()
     @Environment(\.dismiss) private var dismiss
     var body: some View {
@@ -59,7 +61,7 @@ struct SVGExportView: View {
             HStack {
                 Label("Export SVG", systemImage: "square.and.arrow.up").font(.title2.bold())
                 Spacer()
-                Text("\(session.document.project.shapes.count.formatted()) objects").foregroundStyle(.secondary)
+                Text("\(project.shapes.count.formatted()) objects").foregroundStyle(.secondary)
             }
             Text("Keep your artwork editable in vector applications.").foregroundStyle(.secondary)
             Divider()
@@ -93,7 +95,7 @@ struct SVGExportView: View {
                     Button("Cancel Export") { exporter.cancel() }.help("Cancel this export without changing the document or destination file")
                 } else {
                     Button(exporter.exportedURL == nil ? "Cancel" : "Done") { dismiss() }.keyboardShortcut(.cancelAction).help("Return to the document")
-                    Button("Export…") { exporter.chooseDestination(project: session.document.project) }
+                    Button("Export…") { exporter.chooseDestination(project: project) }
                         .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).help("Choose where to save the SVG")
                 }
             }.disabled(exporter.choosingDestination)

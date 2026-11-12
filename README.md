@@ -4,7 +4,7 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.5 adds freehand Pencil and editable vector brushes alongside real groups and nested layers, precise SVG export, and a signed-in Codex image-to-vector workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.6 adds finer image-to-vector tracing and direct preview SVG export alongside freehand Pencil, editable brushes, real groups and nested layers, and a signed-in Codex workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
 
 ## Open the app
 
@@ -31,7 +31,9 @@ Click **Draw with Codex** in the toolbar, or press **Shift-Command-G**. Describe
 
 Generation uses the installed Codex CLI App Server and your existing ChatGPT sign-in. It does not require an API key. Codex must be installed and signed in, and image generation must be available for the account. The account's image generation limits apply. An optional reference image is sent with the prompt to Codex. **Check Connection** checks the existing login without exposing or copying credentials.
 
-**Vectorize an Existing Image** converts a PNG, JPEG, or WebP locally. This does not require a Codex connection. Vectorization approximates shading with colored Bézier contours, simplifying fine texture and outlining text. Simple detail produces fewer paths; Detailed preserves more shading and can produce thousands of objects.
+**Vectorize an Existing Image** converts a PNG, JPEG, or WebP locally. This does not require a Codex connection. Vectorization approximates shading with colored Bézier contours, simplifying fine texture and outlining text. **Detailed** is the default. **Ultra** preserves smaller accents and finer color transitions but can produce tens of thousands of objects and much larger files.
+
+Choose a detail setting and **Rebuild Last Image** to retrace the last completed source without another Codex image request. With a preview open, the button becomes **Rebuild These Vectors**. Use **Export SVG…** in the preview to save the vectors directly, or insert them with **Add to Canvas**. Existing canvas edits stay unchanged; rebuilding creates new artwork from the source image. Exporting an older, simplified document alone will not add detail. See [vector detail, measurements, and limits](docs/vector-detail.md).
 
 Source images, prompts, SVGs, vector previews, and native projects are retained in `~/Library/Application Support/Magdobe Illustrator/Artwork/`. Use **Show Files** to find a result. The Python runtime lives alongside that folder under `Runtime/`; the app bundle's `runtime.json` points to that runtime and the local Codex executable.
 
@@ -108,7 +110,7 @@ A live Codex App Server check generated a sample illustration through the existi
 
 Native UI checks completed: drawing an ellipse; undo and redo; converting to a path; dragging an anchor; drawing a curved open pen path; inserting text; saving and reopening a three-object project; copying and pasting a vector object; undoing the paste; and exporting SVG. The drawing and exported SVG are in `QA/`.
 
-The current suite has 53 passing tests. Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+The current native suite has 55 passing tests. Four additional Python tests use the pinned tracer to check retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
 
 Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
 
@@ -119,7 +121,7 @@ Groups/layers tests also cover native outline selection, nested selection/isolat
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.5 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
+Version 0.6 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
 
 ## Source map
 
