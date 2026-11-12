@@ -34,6 +34,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     private var resizeCorner: Int?
     private var resizeBounds = CGRect.zero
     private var nodeDrag: (shape: UUID, contour: Int, index: Int, handle: Int)?
+    private var freehand: FreehandStroke?
 
     init(session: EditorSession) { self.session = session; super.init(frame: .zero) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -53,7 +54,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
         session.pan = .zero; lastFitRequest = session.fitRequest; needsDisplay = true
     }
     override func resetCursorRects() {
-        let cursor: NSCursor = spaceHeld || session.tool == .hand ? .openHand : ([.pen, .rectangle, .ellipse, .text].contains(session.tool) ? .crosshair : .arrow)
+        let cursor: NSCursor = spaceHeld || session.tool == .hand ? .openHand : ([.pen, .pencil, .brush, .rectangle, .ellipse, .text].contains(session.tool) ? .crosshair : .arrow)
         addCursorRect(bounds, cursor: cursor)
     }
     override func draw(_ dirtyRect: NSRect) {
@@ -75,6 +76,15 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             ctx.strokePath()
         }
         VectorRenderer.draw(project, in: ctx)
+        if let stroke = freehand {
+            ctx.saveGState(); ctx.setAlpha(stroke.settings.opacity)
+            ctx.addPath(stroke.geometry())
+            if stroke.pencil && stroke.samples.count > 1 {
+                ctx.setStrokeColor(stroke.color.nsColor.cgColor); ctx.setLineWidth(stroke.settings.size)
+                ctx.setLineCap(.round); ctx.setLineJoin(.round); ctx.strokePath()
+            } else { ctx.setFillColor(stroke.color.nsColor.cgColor); ctx.fillPath() }
+            ctx.restoreGState()
+        }
         ctx.restoreGState()
         let accent = NSColor.controlAccentColor
         ctx.setStrokeColor(accent.cgColor); ctx.setFillColor(accent.cgColor); ctx.setLineWidth(1 / session.zoom)
@@ -127,6 +137,11 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         down = world(location(event)); lastViewPoint = location(event)
+        if session.tool.isFreehand && !spaceHeld {
+            freehand = session.beginFreehand()
+            freehand?.append(down, pressure: tabletPressure(event))
+            needsDisplay = true; return
+        }
         initialSelection = session.selection; baseline = session.document.project.shapes
         baselineIndices = Dictionary(uniqueKeysWithValues: baseline.enumerated().map { ($0.element.id, $0.offset) })
         if spaceHeld || session.tool == .hand { panning = true; NSCursor.closedHand.set(); return }
@@ -170,6 +185,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             let shape = session.makeShape(session.tool == .rectangle ? .rectangle : .ellipse, rect: CGRect(origin: down, size: .zero))
             session.document.project.appendShapes([shape], to: destination.parent); creating = shape.id; session.selection = [shape.id]
         case .pen: penDown(down)
+        case .pencil, .brush: break // Handled before allocating selection-drag snapshots.
         case .text:
             guard let destination = session.insertionDestination() else { return }
             var shape = session.makeShape(.text, rect: CGRect(x: down.x, y: down.y, width: 360, height: 130))
@@ -197,6 +213,10 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     }
     override func mouseDragged(with event: NSEvent) {
         let viewPoint = location(event), p = world(viewPoint)
+        if freehand != nil {
+            freehand?.append(p, pressure: tabletPressure(event), minimumDistance: 0.5 / session.zoom)
+            needsDisplay = true; return
+        }
         if panning {
             session.pan.width += viewPoint.x - lastViewPoint.x; session.pan.height += viewPoint.y - lastViewPoint.y
             lastViewPoint = viewPoint; needsDisplay = true; return
@@ -253,6 +273,11 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
         needsDisplay = true
     }
     override func mouseUp(with event: NSEvent) {
+        if var stroke = freehand {
+            // Mouse-up pressure is zero even after a full-pressure tablet stroke.
+            stroke.append(world(location(event)), pressure: stroke.samples.last?.pressure, minimumDistance: 0.01)
+            freehand = nil; session.commitFreehand(stroke); needsDisplay = true; return
+        }
         if let id = creating, let shape = session.document.project.shapes.first(where: { $0.id == id }), shape.width < 1 || shape.height < 1 {
             session.document.project.removeNodes([id]); session.selection.remove(id)
         }
@@ -262,11 +287,20 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     }
     private func normalized(_ a: CGPoint, _ b: CGPoint) -> CGRect { CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)) }
     override func scrollWheel(with event: NSEvent) {
+        guard freehand == nil else { return }
         if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.option) {
             zoom(at: location(event), factor: exp(event.scrollingDeltaY * 0.01))
         } else { session.pan.width += event.scrollingDeltaX; session.pan.height += event.scrollingDeltaY }
     }
-    override func magnify(with event: NSEvent) { zoom(at: location(event), factor: 1 + event.magnification) }
+    override func magnify(with event: NSEvent) { if freehand == nil { zoom(at: location(event), factor: 1 + event.magnification) } }
+    private func tabletPressure(_ event: NSEvent) -> Double? {
+        event.subtype == .tabletPoint || event.type == .tabletPoint ? Double(event.pressure) : nil
+    }
+    override func tabletPoint(with event: NSEvent) {
+        guard freehand != nil, event.pressure > 0 else { return }
+        freehand?.append(world(location(event)), pressure: Double(event.pressure), minimumDistance: 0.5 / session.zoom)
+        needsDisplay = true
+    }
     private func zoom(at point: CGPoint, factor: Double) {
         let before = world(point)
         session.zoom = max(0.02, min(32, session.zoom * factor))
@@ -274,6 +308,14 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
         session.pan.width += (after.x - before.x) * session.zoom; session.pan.height += (after.y - before.y) * session.zoom
     }
     override func keyDown(with event: NSEvent) {
+        if freehand != nil {
+            // Escape and commands cancel the uncommitted preview; no partial
+            // stroke or extra undo entry can leak into a save/export/tool change.
+            if event.keyCode == 53 || event.modifierFlags.contains(.command) {
+                freehand = nil; needsDisplay = true
+                if event.keyCode == 53 { return }
+            } else { return }
+        }
         if event.modifierFlags.contains(.command) { super.keyDown(with: event); return }
         let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
         let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
@@ -290,12 +332,13 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
         case 125: session.moveSelection(CGSize(width: 0, height: step))
         case 126: session.moveSelection(CGSize(width: 0, height: -step))
         default:
-            if let tool = EditorTool.allCases.first(where: { $0.key == key }) { session.selectTool(tool) }
+            if session.tool.isFreehand, key == "[" || key == "]" { session.adjustDrawingSize(key == "]") }
+            else if let tool = EditorTool.allCases.first(where: { $0.key == key }) { session.selectTool(tool) }
             else { super.keyDown(with: event) }
         }
     }
     override func keyUp(with event: NSEvent) { if event.keyCode == 49 { spaceHeld = false; window?.invalidateCursorRects(for: self) } else { super.keyUp(with: event) } }
-    override func resignFirstResponder() -> Bool { spaceHeld = false; return super.resignFirstResponder() }
+    override func resignFirstResponder() -> Bool { spaceHeld = false; freehand = nil; needsDisplay = true; return super.resignFirstResponder() }
 
     override func selectAll(_ sender: Any?) { session.selectAll() }
     @objc func copy(_ sender: Any?) { session.copySelection() }

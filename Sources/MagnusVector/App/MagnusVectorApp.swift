@@ -44,6 +44,9 @@ struct EditorCommands: Commands {
         }
         CommandMenu("Artwork") {
             Button("Draw with Codex…") { session?.showGeneration = true }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(session == nil)
+            Divider()
+            Button("Pencil") { session?.selectTool(.pencil) }.disabled(session == nil)
+            Button("Brush") { session?.selectTool(.brush) }.disabled(session == nil)
         }
         CommandMenu("Object") {
             Button("Group") { session?.groupSelection() }.keyboardShortcut("g").disabled(session?.canGroup != true)

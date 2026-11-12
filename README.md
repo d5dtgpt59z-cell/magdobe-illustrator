@@ -4,7 +4,7 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.4 combines real groups and nested layers, precise editable SVG export, and a signed-in Codex image-to-vector workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.5 adds freehand Pencil and editable vector brushes alongside real groups and nested layers, precise SVG export, and a signed-in Codex image-to-vector workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
 
 ## Open the app
 
@@ -37,13 +37,23 @@ Source images, prompts, SVGs, vector previews, and native projects are retained 
 
 The cream paper texture is the editor workspace. The white artboard and exported artwork retain their existing behavior. Custom editor and generation controls have native hover tooltips. The generated app icon is included in `Resources/AppIcon/`.
 
+## Freehand drawing and brushes
+
+Choose **Pencil (N)** for an editable centerline or **Brush (B)** for a filled vector outline. Drag on the artboard; release to add one object and one undo step. Escape cancels an unfinished stroke. Click without dragging to make a dot.
+
+The brush inspector includes **Round**, **Tapered Ink**, and **Calligraphy** presets, a live preview, color, size, smoothing, opacity, and optional tablet pressure. Calligraphy adds nib angle and roundness. Use **[ / ]** on the canvas to change size. Mouse and trackpad strokes use steady width; tablet pressure can vary brush width. Pencil retains a uniform editable stroke width.
+
+Settings apply to the **next** stroke. Completed brushes are ordinary filled Bézier paths: use **Direct Selection (A)** to edit their outlines, or the existing appearance and transform controls to recolor, adjust opacity, move and resize them. Pencil curves retain editable centerlines and stroke widths. Strokes respect the active layer, group isolation, hidden/locked containers, undo/redo, save/open, clipboard, and existing SVG/PDF/PNG export. No raster images or proprietary brush definitions are embedded in SVG.
+
+See [brush behavior, validation and limits](docs/brushes.md). This is the first brush system, not Illustrator brush-library compatibility: custom art/scatter/pattern/bristle brushes, a vector eraser, automatic Blob Brush merging, and live reapplication of a preset to completed strokes are not included. Physical-tablet pressure still needs a hardware check.
+
 ## Editable SVG export
 
 Use **File → Export → SVG…** or the existing Export toolbar menu. Options preserve named object groups, outline text, remove formatting whitespace, and keep the entire artboard or fit the drawing. Exports run in the background with progress, cancellation and atomic saving. All geometry retains full coordinate precision; hidden objects and stable IDs are kept. The 2,199-object sample and validation report are in `QA/SVG/` and [`docs/svg-export.md`](docs/svg-export.md). Illustrator is not installed here, so actual Illustrator compatibility has **not** been verified.
 
 ## Working features
 
-- Rectangle, ellipse, pen, and text tools.
+- Rectangle, ellipse, pen, freehand Pencil, vector Brush, and text tools.
 - Cubic Bézier pen: click corners, drag smooth handles, click the first anchor to close a path, or press Return to finish an open path.
 - Compound paths preserve multiple contours and holes using nonzero winding. Inner contours support direct node editing and transform with their parent object.
 - Direct selection: drag individual anchors and control handles. Convert rectangles and ellipses to editable paths through Object → Convert to Path.
@@ -63,7 +73,10 @@ The canvas uses a white artboard as a viewing surface. Exports have no automatic
 | Action | Key |
 | --- | --- |
 | Selection / direct selection | V / A |
-| Pen / rectangle / ellipse / text / hand | P / M / L / T / H |
+| Pen / pencil / brush | P / N / B |
+| Rectangle / ellipse / text / hand | M / L / T / H |
+| Pencil / brush size | [ / ] while the canvas has focus |
+| Cancel an unfinished freehand stroke | Escape |
 | Temporary hand | Hold Space on the canvas |
 | Finish pen path / deselect | Return / Escape |
 | Move selection | Arrow keys; Shift for 10 units |
@@ -95,6 +108,8 @@ A live Codex App Server check generated a sample illustration through the existi
 
 Native UI checks completed: drawing an ellipse; undo and redo; converting to a path; dragging an anchor; drawing a curved open pen path; inserting text; saving and reopening a three-object project; copying and pasting a vector object; undoing the paste; and exporting SVG. The drawing and exported SVG are in `QA/`.
 
+The current suite has 53 passing tests. Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+
 Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
 
 ## Next development stages
@@ -104,7 +119,7 @@ Groups/layers tests also cover native outline selection, nested selection/isolat
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.4 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
+Version 0.5 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
 
 ## Source map
 

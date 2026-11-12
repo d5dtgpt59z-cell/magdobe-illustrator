@@ -2,21 +2,24 @@ import SwiftUI
 import AppKit
 
 enum EditorTool: String, CaseIterable, Identifiable {
-    case select, node, pen, rectangle, ellipse, text, hand
+    case select, node, pen, pencil, brush, rectangle, ellipse, text, hand
+    var isFreehand: Bool { self == .pencil || self == .brush }
     var id: Self { self }
     var title: String { switch self {
-        case .select: "Selection"; case .node: "Direct Selection"; case .pen: "Pen"; case .rectangle: "Rectangle"; case .ellipse: "Ellipse"; case .text: "Text"; case .hand: "Hand"
+        case .select: "Selection"; case .node: "Direct Selection"; case .pen: "Pen"; case .pencil: "Pencil"; case .brush: "Brush"; case .rectangle: "Rectangle"; case .ellipse: "Ellipse"; case .text: "Text"; case .hand: "Hand"
     } }
     var symbol: String { switch self {
-        case .select: "cursorarrow"; case .node: "cursorarrow.square"; case .pen: "point.topleft.down.to.point.bottomright.curvepath"; case .rectangle: "rectangle"; case .ellipse: "circle"; case .text: "textformat"; case .hand: "hand.draw"
+        case .select: "cursorarrow"; case .node: "cursorarrow.square"; case .pen: "point.topleft.down.to.point.bottomright.curvepath"; case .pencil: "pencil"; case .brush: "paintbrush.pointed"; case .rectangle: "rectangle"; case .ellipse: "circle"; case .text: "textformat"; case .hand: "hand.draw"
     } }
     var key: String { switch self {
-        case .select: "v"; case .node: "a"; case .pen: "p"; case .rectangle: "m"; case .ellipse: "l"; case .text: "t"; case .hand: "h"
+        case .select: "v"; case .node: "a"; case .pen: "p"; case .pencil: "n"; case .brush: "b"; case .rectangle: "m"; case .ellipse: "l"; case .text: "t"; case .hand: "h"
     } }
     var hint: String { switch self {
         case .select: "Click to select · Shift-click for multiple · Drag corners to resize"
         case .node: "Select a path · Drag anchors or handles · Convert shapes to paths to edit nodes"
         case .pen: "Click for corners · Click-drag for curves · Click first anchor to close · Return to finish"
+        case .pencil: "Drag to draw an editable curve · [ / ] size · Escape cancels the stroke"
+        case .brush: "Drag to paint editable vectors · [ / ] size · Escape cancels the stroke"
         case .rectangle, .ellipse: "Drag to draw · Hold Shift for equal sides"
         case .text: "Click to place text · Edit the wording in the inspector"
         case .hand: "Drag to pan · Scroll to pan · Pinch to zoom"
@@ -36,6 +39,9 @@ final class EditorSession: ObservableObject {
     @Published var hasFill = true
     @Published var hasStroke = false
     @Published var strokeWidth: Double = 2
+    @Published var brushSettings = BrushSettings()
+    @Published var pencilSize = 2.0
+    @Published var brushColor: VectorColor = .ink
     @Published var activePath: UUID?
     @Published var selectedAnchor: Int?
     @Published var selectedContour = 0
@@ -107,6 +113,29 @@ final class EditorSession: ObservableObject {
     }
     func makeShape(_ kind: ShapeKind, rect: CGRect) -> VectorShape {
         VectorShape(name: "\(kind.rawValue.capitalized) \(document.project.shapes.count + 1)", kind: kind, x: rect.minX, y: rect.minY, width: rect.width, height: rect.height, fill: hasFill ? fill : nil, stroke: hasStroke ? stroke : nil, strokeWidth: strokeWidth)
+    }
+    func beginFreehand() -> FreehandStroke? {
+        guard tool.isFreehand, let destination = insertionDestination() else { return nil }
+        finishPath()
+        var settings = brushSettings
+        if tool == .pencil { settings.size = pencilSize }
+        return FreehandStroke(pencil: tool == .pencil, settings: settings, color: brushColor, parent: destination.parent)
+    }
+    func commitFreehand(_ stroke: FreehandStroke) {
+        if let parent = stroke.parent {
+            let index = document.project.hierarchyIndex
+            guard index.nodes[parent] != nil, !index.hidden.contains(parent), !index.locked.contains(parent) else {
+                error = "The stroke’s layer is no longer editable. Show or unlock it and draw again."; return
+            }
+        }
+        guard document.project.shapes.count < 100_000, let shape = stroke.shape() else { return }
+        edit(stroke.pencil ? "Draw Pencil" : "Draw Brush") { $0.appendShapes([shape], to: stroke.parent) }
+        selection = [shape.id]; selectedAnchor = nil
+    }
+    func adjustDrawingSize(_ increase: Bool) {
+        let factor = increase ? 1.2 : 1 / 1.2
+        if tool == .pencil { pencilSize = min(300, max(1, pencilSize * factor)) }
+        else { brushSettings.size = min(300, max(1, brushSettings.size * factor)) }
     }
     func deleteSelection() {
         let ids = Set(editableRoots)

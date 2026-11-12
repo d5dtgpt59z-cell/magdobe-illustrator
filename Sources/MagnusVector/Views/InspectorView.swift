@@ -7,6 +7,7 @@ struct InspectorView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if session.tool.isFreehand { BrushControls(session: session); Divider() }
                     sectionTitle("PROPERTIES")
                     if let node = session.selectedNode {
                         TextField("Object name", text: Binding(get: { session.selectedShape?.name ?? session.selectedNode?.name ?? "" }, set: { session.renameSelection($0) }))
