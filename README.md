@@ -10,7 +10,7 @@ A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core 
 
 The built application is `dist/Magdobe Illustrator.app`. On launch, choose **New Document** or open an existing `.mvector` project.
 
-Requirements: macOS 14+, Xcode with a Swift 6 toolchain, and Python 3 with `venv`/`pip`. The first app build downloads the two pinned vector-conversion packages. Codex is optional for manual drawing and SVG export; generation requires an installed Codex CLI with an existing ChatGPT sign-in.
+Requirements: macOS 14+, Xcode with a Swift 6 toolchain, and Python 3.9–3.14 with `venv`/`pip` (3.11 recommended). The first app build downloads the two pinned vector-conversion packages. Codex is optional for manual drawing and SVG export; generation requires an installed Codex CLI with an existing ChatGPT sign-in.
 
 ```sh
 git clone https://github.com/d5dtgpt59z-cell/magdobe-illustrator.git
@@ -24,6 +24,8 @@ Build and launch from this directory:
 ```
 
 The script stages a local `.app`, signs it for local use, and launches it. Pass `--build-only` to update the bundle without restarting an active document session. It uses installed Xcode when available without changing the system developer-tool selection. macOS 14 or later is required. The native editor has no third-party Swift package dependencies. The build script installs a local Python environment with VTracer 0.6.15 and svgpathtools 1.8.0 for vector conversion. The project-local Codex Run action calls this script.
+
+For a new runtime, set `MAGDOBE_PYTHON=python3.11` before building if the default `python3` is too new. Existing supported runtimes are reused. Setup rejects Python 3.15+, which crashed the pinned tracer in CI; CI uses Python 3.11.
 
 ## Draw with Codex
 

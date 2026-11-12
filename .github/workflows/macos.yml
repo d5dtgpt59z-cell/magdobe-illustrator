@@ -24,6 +24,9 @@ jobs:
         run: swift --version
       - name: Build and test native editor and SVG export
         run: ./script/test.sh
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
       - name: Test image-to-vector detail preservation
         run: |
           python3 -m venv .build/artwork-tests

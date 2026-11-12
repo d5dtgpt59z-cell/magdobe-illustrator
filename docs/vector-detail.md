@@ -49,7 +49,7 @@ Run the existing native suite and the tracer tests:
 
 ```sh
 ./script/test.sh
-python3 -m venv .build/artwork-tests
+python3.11 -m venv .build/artwork-tests
 .build/artwork-tests/bin/python -m pip install vtracer==0.6.15 svgpathtools==1.8.0
 .build/artwork-tests/bin/python -m unittest discover -s Tests/Artwork -v
 ```
