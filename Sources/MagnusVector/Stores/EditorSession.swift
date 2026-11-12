@@ -47,7 +47,7 @@ final class EditorSession: ObservableObject {
     @Published var selectedContour = 0
     @Published var error: String?
     @Published var showGeneration = false
-    @Published var showSVGExport = false
+    @Published var exportFormat: ArtworkFileFormat?
     let history = UndoManager()
     let dragSessionID = UUID()
     @Published var isolatedGroupID: UUID?
@@ -198,14 +198,13 @@ final class EditorSession: ObservableObject {
         }
     }
     func export(_ format: ExportFormat) {
-        if format == .svg { showSVGExport = true; return }
-        finishPath()
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Untitled.\(format.rawValue)"
-        panel.allowedContentTypes = [format.contentType]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try VectorExporter.data(document.project, format: format).write(to: url, options: .atomic) }
-        catch { self.error = error.localizedDescription }
+        exportFormat = ArtworkFileFormat(rawValue: format.rawValue)
+    }
+    func saveProject() {
+        // Let DocumentGroup own the save location, dirty state, and subsequent Command-S updates.
+        if !NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil) {
+            error = "The document could not be saved. Try File → Save."
+        }
     }
     func insertArtwork(_ incoming: VectorProject) {
         do { _ = try incoming.validated() } catch { self.error = error.localizedDescription; return }

@@ -3,7 +3,7 @@ import SwiftUI
 struct GenerationView: View {
     @ObservedObject var session: EditorSession
     @StateObject private var generation = GenerationStore()
-    @State private var showPreviewExport = false
+    @State private var saveFormat: ArtworkFileFormat?
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(spacing: 0) {
@@ -83,13 +83,24 @@ struct GenerationView: View {
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                     if let error = generation.error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
+                    if generation.project != nil {
+                        HStack {
+                            Button("Show Source Files") { generation.revealFiles() }.font(.caption)
+                                .help("Open the original image and generated artwork files")
+                            Spacer()
+                        }
+                    }
                     HStack {
                         if generation.busy { Button("Cancel") { generation.cancel() }.help("Stop this request and keep your current document") }
                         if generation.project != nil {
-                            Button("Show Files") { generation.revealFiles() }.help("Open the folder containing the source image, prompt, SVG, and project")
+                            Button("Save Project…") { saveFormat = .project }.disabled(generation.busy)
+                                .help("Save this preview as an editable Magdobe project without adding it to the canvas")
+                            Menu("Export") {
+                                ForEach(ExportFormat.allCases, id: \.self) { format in
+                                    Button("\(format.rawValue.uppercased())…") { saveFormat = ArtworkFileFormat(rawValue: format.rawValue) }
+                                }
+                            }.disabled(generation.busy).help("Export this preview as SVG, PDF, or PNG")
                             Spacer()
-                            Button("Export SVG…") { showPreviewExport = true }.disabled(generation.busy)
-                                .help("Save these preview vectors using the standard SVG exporter, without inserting them into the canvas")
                             Button("Add to Canvas") {
                                 if let project = generation.project { session.insertArtwork(project) }; dismiss()
                             }.buttonStyle(.borderedProminent).disabled(generation.busy).help("Insert the generated vectors as a single undoable action")
@@ -103,8 +114,8 @@ struct GenerationView: View {
         .preferredColorScheme(.light)
         .tint(PaperTexture.accent)
         .interactiveDismissDisabled(generation.busy)
-        .sheet(isPresented: $showPreviewExport) {
-            if let project = generation.project { SVGExportView(session: session, artwork: project) }
+        .sheet(item: $saveFormat) { format in
+            if let project = generation.project { ArtworkSaveView(project: project, initialFormat: format) }
         }
         .task { await generation.checkConnection() }
         .onDisappear { generation.cancel() }

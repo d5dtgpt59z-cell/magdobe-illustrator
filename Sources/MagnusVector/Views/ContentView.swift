@@ -54,7 +54,9 @@ struct ContentView: View {
         .preferredColorScheme(.light)
         .tint(PaperTexture.accent)
         .sheet(isPresented: $session.showGeneration) { GenerationView(session: session) }
-        .sheet(isPresented: $session.showSVGExport) { SVGExportView(session: session) }
+        .sheet(item: $session.exportFormat) { format in
+            ArtworkSaveView(project: document.project, initialFormat: format, includesProject: false)
+        }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Label("Magdobe Illustrator", systemImage: "point.3.connected.trianglepath.dotted").font(.headline)
@@ -67,9 +69,11 @@ struct ContentView: View {
                 Divider()
                 Toggle(isOn: $session.grid) { Image(systemName: "square.grid.3x3") }.help("Show grid")
                 Button { session.fit() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }.help("Fit artboard (⌘0)").accessibilityLabel("Fit Artboard")
+                Button { session.saveProject() } label: { Label("Save Project", systemImage: "square.and.arrow.down").labelStyle(.titleAndIcon) }
+                    .help("Save this editable Magdobe project (⌘S). Reopen it to keep editing objects and layers.")
                 Menu {
                     ForEach(ExportFormat.allCases, id: \.self) { format in Button("Export \(format.rawValue.uppercased())…") { session.export(format) } }
-                } label: { Label("Export", systemImage: "square.and.arrow.up") }.help("Export artwork as SVG, PDF, or PNG")
+                } label: { Label("Export", systemImage: "square.and.arrow.up").labelStyle(.titleAndIcon) }.help("Export artwork as SVG, PDF, or PNG")
             }
         }
         .alert("Couldn’t complete the action", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) { Button("OK") { session.error = nil } } message: { Text(session.error ?? "") }

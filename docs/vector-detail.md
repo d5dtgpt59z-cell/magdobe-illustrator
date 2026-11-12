@@ -8,7 +8,7 @@ Version 0.6 makes **Detailed** the default and adds an opt-in **Ultra** preset. 
 2. Choose **Ultra** under **Vector detail**.
 3. Click **Rebuild Last Image**, or **Rebuild These Vectors** when a result is already in the panel.
 4. Compare **Editable vectors** and **Source image**.
-5. Click **Export SVG…** to export the preview directly, or **Add to Canvas** to insert its editable paths.
+5. Click **Export → SVG…** to export the preview directly, **Save Project…** for an editable Magdobe file, or **Add to Canvas** to insert its editable paths. PDF and PNG are also available in Export.
 
 Rebuild uses the most recent completed source image saved by Magdobe, across documents. To choose a different source, use **Vectorize an Existing Image…**. Rebuilding copies the original PNG unchanged and runs locally, without requesting another image from Codex. It does not require a Codex connection.
 
@@ -25,7 +25,7 @@ Each rebuild gets a separate job folder. Existing canvas objects and saved proje
 
 The original three tracing configurations are unchanged. All use the existing VTracer 0.6.15 stacked color/spline pipeline. Ultra keeps smaller regions and more color variation, and native conversion preserves the resulting coordinate precision. It is still an approximation of the source image: fine texture, translucent pixels, or tiny lettering may not reproduce exactly. It cannot invent details missing from the source.
 
-Ultra can create tens of thousands of individually editable filled paths, large SVG/native files, and slower canvas editing. A trace is rejected above 80,000 paths or 750,000 anchors, with a message to lower the detail setting. Limits do not silently simplify the result. A failed rebuild keeps the previous preview; native result files are written atomically. **Show Files** includes `trace-info.json` with the settings, dimensions, object count, and anchor count.
+Ultra can create tens of thousands of individually editable filled paths, large SVG/native files, and slower canvas editing. A trace is rejected above 80,000 paths or 750,000 anchors, with a message to lower the detail setting. Limits do not silently simplify the result. A failed rebuild keeps the previous preview; native result files are written atomically. **Show Source Files** includes `trace-info.json` with the settings, dimensions, object count, and anchor count.
 
 ## Validation
 
@@ -41,7 +41,7 @@ Ultra retained 690,306 anchors. VTracer tracing took about 7 seconds; tracing pl
 
 The original 2,199-object illustration was also traced at Ultra, yielding 63,785 paths at the VTracer stage. This second measurement is not a claim of an Illustrator round trip or a full native export test.
 
-The native drawing panel was exercised in a separate test app: Detailed was the default, Ultra could be selected, Rebuild Last Image completed with 65,496 objects, and the preview's Export SVG opened the existing options and save panel. Saving produced a complete 65,496-path SVG that parsed successfully. UI inspection timed out after the save, so the final success label and return from that sheet were not visually verified.
+During version 0.6 validation, the native drawing panel was exercised in a separate test app: Detailed was the default, Ultra could be selected, Rebuild Last Image completed with 65,496 objects, and the preview's Export SVG opened the existing options and save panel. Saving produced a complete 65,496-path SVG that parsed successfully. UI inspection timed out after the save, so the final success label and return from that sheet were not visually verified. Version 0.7 adds the broader [save and export panel](save-and-export.md).
 
 Automated coverage uses a synthetic PNG with small highlights and subtle color differences, not private artwork. Four Python tests exercise the real pinned tracer, source preservation, greater retained detail, native path counts, four-decimal Bézier coordinates, explicit invalid settings, and complexity-limit failure. Two Swift tests check the Detailed default, latest completed source selection, and preservation of the current result when a rebuild fails.
 

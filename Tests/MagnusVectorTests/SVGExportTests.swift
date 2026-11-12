@@ -221,10 +221,12 @@ final class SVGExportTests: XCTestCase {
         let doc = VectorDocument(project: VectorProject(shapes: [path])), original = doc.project
         let session = EditorSession(document: doc)
         session.activePath = path.id; session.beginTransaction()
-        session.export(.svg)
-        XCTAssertEqual(doc.project,original)
-        XCTAssertEqual(session.activePath,path.id)
-        XCTAssertTrue(session.showSVGExport)
-        XCTAssertFalse(session.canUndo)
+        for format in ExportFormat.allCases {
+            session.export(format)
+            XCTAssertEqual(doc.project,original)
+            XCTAssertEqual(session.activePath,path.id)
+            XCTAssertEqual(session.exportFormat?.rawValue, format.rawValue)
+            XCTAssertFalse(session.canUndo)
+        }
     }
 }
