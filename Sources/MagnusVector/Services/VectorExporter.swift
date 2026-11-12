@@ -7,7 +7,7 @@ enum ExportFormat: String, CaseIterable {
 }
 
 enum VectorRenderer {
-    static func draw(_ shape: VectorShape, in context: CGContext) {
+    static func draw(_ shape: VectorShape, in context: CGContext, path: CGPath? = nil) {
         guard shape.visible else { return }
         context.saveGState(); defer { context.restoreGState() }
         context.setAlpha(shape.opacity)
@@ -20,9 +20,10 @@ enum VectorRenderer {
             NSGraphicsContext.restoreGraphicsState()
             return
         }
-        if let fill = shape.fill { context.addPath(shape.cgPath); context.setFillColor(fill.nsColor.cgColor); context.fillPath() }
+        let geometry = path ?? shape.cgPath
+        if let fill = shape.fill { context.addPath(geometry); context.setFillColor(fill.nsColor.cgColor); context.fillPath() }
         if let stroke = shape.stroke, shape.strokeWidth > 0 {
-            context.addPath(shape.cgPath); context.setStrokeColor(stroke.nsColor.cgColor); context.setLineWidth(shape.strokeWidth); context.setLineCap(.round); context.setLineJoin(.round); context.strokePath()
+            context.addPath(geometry); context.setStrokeColor(stroke.nsColor.cgColor); context.setLineWidth(shape.strokeWidth); context.setLineCap(.round); context.setLineJoin(.round); context.strokePath()
         }
     }
     static func draw(_ project: VectorProject, in context: CGContext) {

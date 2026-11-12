@@ -15,8 +15,10 @@ if [[ "$MODE" != "--build-only" && "$MODE" != "build-only" ]]; then
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 fi
 ./script/setup_artwork_runtime.sh
-swift build
-BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
+CONFIGURATION=release
+if [[ "$MODE" == "--debug" || "$MODE" == "debug" ]]; then CONFIGURATION=debug; fi
+swift build -c "$CONFIGURATION"
+BUILD_BINARY="$(swift build -c "$CONFIGURATION" --show-bin-path)/$APP_NAME"
 mkdir -p "$APP_CONTENTS/MacOS"
 cp "$BUILD_BINARY" "$APP_BINARY.next"
 chmod +x "$APP_BINARY.next"
@@ -38,7 +40,7 @@ cat > "$APP_CONTENTS/Info.plist" <<PLIST
 <key>CFBundleName</key><string>Magdobe Illustrator</string>
 <key>CFBundleDisplayName</key><string>Magdobe Illustrator</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.7.0</string>
+<key>CFBundleShortVersionString</key><string>0.7.1</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>

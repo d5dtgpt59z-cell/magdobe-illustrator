@@ -28,6 +28,8 @@ enum EditorTool: String, CaseIterable, Identifiable {
 
 final class EditorSession: ObservableObject {
     let document: VectorDocument
+    weak var documentWindow: NSWindow?
+    @Published var savingProject = false
     @Published var selection: Set<UUID> = []
     @Published var tool: EditorTool = .select
     @Published var zoom: Double = 0.7
@@ -64,12 +66,15 @@ final class EditorSession: ObservableObject {
 
     init(document: VectorDocument) { self.document = document; history.levelsOfUndo = 100; history.groupsByEvent = false }
     var selectedShapes: [VectorShape] {
-        let ids = document.project.hierarchyIndex.objectIDs(in: selection)
-        return document.project.shapes.filter { ids.contains($0.id) }
+        guard !selection.isEmpty else { return [] }
+        let index = document.hierarchyIndex
+        let ids = index.objectIDs(in: selection)
+        return ids.compactMap { index.shapeIndices[$0] }.sorted().map { document.project.shapes[$0] }
     }
     var selectedShape: VectorShape? {
-        guard selection.count == 1, let id = selection.first else { return nil }
-        return document.project.shapes.first { $0.id == id }
+        guard selection.count == 1, let id = selection.first,
+              let index = document.hierarchyIndex.shapeIndices[id] else { return nil }
+        return document.project.shapes[index]
     }
     var selectionBounds: CGRect? { selectedShapes.reduce(nil) { r, s in r.map { $0.union(s.bounds) } ?? s.bounds } }
     var canUndo: Bool { history.canUndo }
@@ -123,7 +128,7 @@ final class EditorSession: ObservableObject {
     }
     func commitFreehand(_ stroke: FreehandStroke) {
         if let parent = stroke.parent {
-            let index = document.project.hierarchyIndex
+            let index = document.hierarchyIndex
             guard index.nodes[parent] != nil, !index.hidden.contains(parent), !index.locked.contains(parent) else {
                 error = "The stroke’s layer is no longer editable. Show or unlock it and draw again."; return
             }
@@ -156,7 +161,7 @@ final class EditorSession: ObservableObject {
     func moveSelection(_ delta: CGSize) { modifySelection("Move") { $0.translate(delta) } }
     func reorder(_ front: Bool) { reorderSelection(front) }
     func align(_ axis: String) {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         let roots = editableRoots
         guard !roots.isEmpty else { return }
         let units = roots.compactMap { id -> (Set<UUID>, CGRect)? in
@@ -200,10 +205,14 @@ final class EditorSession: ObservableObject {
     func export(_ format: ExportFormat) {
         exportFormat = ArtworkFileFormat(rawValue: format.rawValue)
     }
-    func saveProject() {
-        // Let DocumentGroup own the save location, dirty state, and subsequent Command-S updates.
-        if !NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil) {
-            error = "The document could not be saved. Try File → Save."
+    @MainActor func saveProject(saveAs: Bool = false) {
+        guard !savingProject else { return }
+        savingProject = true
+        ProjectSaveCoordinator.save(window: documentWindow, saveAs: saveAs) { [weak self] error in
+            DispatchQueue.main.async {
+                self?.savingProject = false
+                if let error { self?.error = error.localizedDescription }
+            }
         }
     }
     func insertArtwork(_ incoming: VectorProject) {
@@ -222,7 +231,7 @@ final class EditorSession: ObservableObject {
         }
         art = remapped(art, offset: .zero, suffix: "")
         guard let destination = insertionDestination() else { return }
-        if let parent = destination.parent, document.project.hierarchyIndex.nodes[parent]?.kind == .group,
+        if let parent = destination.parent, document.hierarchyIndex.nodes[parent]?.kind == .group,
            art.rootNodes.contains(where: { $0.kind == .layer }) { error = "Exit the group before inserting artwork containing layers."; return }
         structuralEdit("Add Generated Artwork") { p in
             if empty { p.width = art.width; p.height = art.height }

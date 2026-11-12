@@ -28,17 +28,18 @@ final class ArtworkSaveStore: ObservableObject {
         panel.prompt = format == .project ? "Save" : "Export"
         panel.canCreateDirectories = true
         savePanel = panel; choosingDestination = true
-        let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            Task { @MainActor in
-                guard let self else { return }
-                let destination = self.savePanel?.url
-                self.savePanel = nil; self.choosingDestination = false
-                if response == .OK, let destination { self.start(project: project, to: destination) }
-            }
+        panel.directoryURL = UserDefaults.standard.url(forKey: "artwork.lastExportDirectory")
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        // Use the panel's own event loop; nesting another sheet in a SwiftUI sheet can
+        // leave destination validation disabled. File writing begins after it closes.
+        NSApp.activate(ignoringOtherApps: true)
+        let response = panel.runModal()
+        let destination = panel.url
+        savePanel = nil; choosingDestination = false
+        if response == .OK, let destination {
+            UserDefaults.standard.set(destination.deletingLastPathComponent(), forKey: "artwork.lastExportDirectory")
+            start(project: project, to: destination)
         }
-        // Attach the picker to its owning sheet instead of creating a separate app-modal window.
-        if let window = NSApp.keyWindow { panel.beginSheetModal(for: window, completionHandler: completion) }
-        else { panel.begin(completionHandler: completion) }
     }
 
     func start(project: VectorProject, to url: URL) {

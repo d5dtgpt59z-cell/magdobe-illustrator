@@ -20,6 +20,7 @@ struct HierarchyIndex {
     var nodes: [UUID: VectorNode] = [:]
     var parents: [UUID: UUID] = [:]
     var order: [UUID] = []
+    private var positions: [UUID: Int] = [:]
     var hidden: Set<UUID> = []
     var locked: Set<UUID> = []
     var blockedContainers: Set<UUID> = []
@@ -29,7 +30,7 @@ struct HierarchyIndex {
         for (i, shape) in project.shapes.enumerated() { shapeIndices[shape.id] = i }
         func visit(_ items: [VectorNode], parent: UUID?, hiddenAncestor: Bool, lockedAncestor: Bool) {
             for node in items {
-                nodes[node.id] = node; parents[node.id] = parent; order.append(node.id)
+                nodes[node.id] = node; parents[node.id] = parent; positions[node.id] = order.count; order.append(node.id)
                 let shape = shapeIndices[node.id].map { project.shapes[$0] }
                 let isHidden = hiddenAncestor || !(shape?.visible ?? node.visible)
                 let isLocked = lockedAncestor || (shape?.locked ?? node.locked)
@@ -47,7 +48,8 @@ struct HierarchyIndex {
         return result
     }
     func roots(in selection: Set<UUID>) -> [UUID] {
-        order.filter { selection.contains($0) && !ancestors(of: $0).contains(where: selection.contains) }
+        selection.filter { nodes[$0] != nil && !ancestors(of: $0).contains(where: selection.contains) }
+            .sorted { positions[$0, default: 0] < positions[$1, default: 0] }
     }
     func objectIDs(in selection: Set<UUID>) -> Set<UUID> {
         Set(roots(in: selection).flatMap { nodes[$0]?.objectIDs ?? [] })

@@ -3,30 +3,30 @@ import AppKit
 extension EditorSession {
     var selectedNode: VectorNode? {
         guard selection.count == 1, let id = selection.first else { return nil }
-        return document.project.hierarchyIndex.nodes[id]
+        return document.hierarchyIndex.nodes[id]
     }
     var editableRoots: [UUID] {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         return index.roots(in: selection).filter { index.canEdit($0) }
     }
     var editableShapeIDs: Set<UUID> {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         return index.objectIDs(in: Set(index.roots(in: selection).filter { index.canEdit($0) }))
     }
     var canGroup: Bool {
-        let index = document.project.hierarchyIndex, roots = index.roots(in: selection)
+        let index = document.hierarchyIndex, roots = index.roots(in: selection)
         guard roots.count >= 2, let first = roots.first else { return false }
         return roots.allSatisfy { index.canEdit($0) && index.nodes[$0]?.kind != .layer && index.parents[$0] == index.parents[first] }
     }
     var canUngroup: Bool {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         return index.roots(in: selection).contains { index.nodes[$0]?.kind == .group && index.canEdit($0) }
     }
     func bounds(of ids: Set<UUID>) -> CGRect? {
         document.project.shapes.filter { ids.contains($0.id) }.reduce(nil) { r, s in r.map { $0.union(s.bounds) } ?? s.bounds }
     }
     func reconcileHierarchyState() {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         selection.formIntersection(index.nodes.keys)
         if let id = isolatedGroupID, index.nodes[id]?.kind != .group || index.hidden.contains(id) || index.locked.contains(id) { isolatedGroupID = nil }
         if let id = activeLayerID, index.nodes[id]?.kind != .layer { activeLayerID = nil }
@@ -47,7 +47,7 @@ extension EditorSession {
     func groupSelection() {
         finishPath()
         guard canGroup else { return }
-        let index = document.project.hierarchyIndex, roots = index.roots(in: selection)
+        let index = document.hierarchyIndex, roots = index.roots(in: selection)
         let ids = Set(roots), parent = index.parents[roots[0]]
         let group = VectorNode(kind: .group, name: "Group", children: roots.compactMap { index.nodes[$0] })
         structuralEdit("Group") { p in
@@ -60,10 +60,10 @@ extension EditorSession {
                 }
             }
         }
-        if document.project.hierarchyIndex.nodes[group.id] != nil { selection = [group.id]; expandedNodes.insert(group.id) }
+        if document.hierarchyIndex.nodes[group.id] != nil { selection = [group.id]; expandedNodes.insert(group.id) }
     }
     func ungroupSelection() {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         let roots = index.roots(in: selection).filter { index.nodes[$0]?.kind == .group && index.canEdit($0) }
         guard !roots.isEmpty else { return }
         let ids = Set(roots)
@@ -80,14 +80,14 @@ extension EditorSession {
         selection.subtract(ids); selection.formUnion(children); reconcileHierarchyState()
     }
     func newLayer(inside parent: UUID? = nil) {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         if let parent, index.nodes[parent]?.kind != .layer || !index.canEdit(parent) { return }
         let count = index.nodes.values.filter { $0.kind == .layer }.count
         let layer = VectorNode(kind: .layer, name: "Layer \(count + 1)")
         structuralEdit("New Layer") { p in p.updateHierarchy { nodes in
             VectorProject.editChildren(in: &nodes, of: parent) { $0.append(layer) }
         } }
-        if document.project.hierarchyIndex.nodes[layer.id] != nil {
+        if document.hierarchyIndex.nodes[layer.id] != nil {
             selection = [layer.id]; activeLayerID = layer.id; isolatedGroupID = nil
             expandedNodes.insert(layer.id); if let parent { expandedNodes.insert(parent) }
         }
@@ -99,7 +99,7 @@ extension EditorSession {
     }
     func toggleNode(_ id: UUID, visibility: Bool) {
         finishPath()
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         guard let node = index.nodes[id] else { return }
         edit(visibility ? "Toggle Visibility" : "Toggle Lock") { p in
             if node.kind == .object, let i = index.shapeIndices[id] {
@@ -108,29 +108,29 @@ extension EditorSession {
                 if visibility { $0.visible.toggle() } else { $0.locked.toggle() }
             } } }
         }
-        let updated = document.project.hierarchyIndex
+        let updated = document.hierarchyIndex
         selection = selection.filter { !updated.locked.contains($0) && !updated.hidden.contains($0) }
         reconcileHierarchyState()
     }
     func enterGroup(_ id: UUID) {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         guard index.nodes[id]?.kind == .group, !index.locked.contains(id), !index.hidden.contains(id) else { return }
         finishPath(); isolatedGroupID = id; selection = []; selectedAnchor = nil; expandedNodes.insert(id)
     }
     func exitGroup() {
         guard let id = isolatedGroupID else { return }
         finishPath()
-        isolatedGroupID = document.project.hierarchyIndex.ancestors(of: id).first { document.project.hierarchyIndex.nodes[$0]?.kind == .group }
+        isolatedGroupID = document.hierarchyIndex.ancestors(of: id).first { document.hierarchyIndex.nodes[$0]?.kind == .group }
         selection = [id]; selectedAnchor = nil
     }
     func selectAll() {
         finishPath()
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         selection = Set(document.project.shapes.compactMap { index.canvasTarget(for: $0.id, inside: isolatedGroupID) })
     }
     func selectFromLayers(_ ids: Set<UUID>) {
         finishPath(); selection = ids; selectedAnchor = nil
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         if let scope = isolatedGroupID, ids.contains(where: { $0 == scope || !index.ancestors(of: $0).contains(scope) }) { isolatedGroupID = nil }
         if ids.count == 1, let id = ids.first {
             activeLayerID = ([id] + index.ancestors(of: id)).first { index.nodes[$0]?.kind == .layer }
@@ -140,7 +140,7 @@ extension EditorSession {
     func insertionDestination() -> Destination? {
         let parent = isolatedGroupID ?? activeLayerID
         if let parent {
-            let index = document.project.hierarchyIndex
+            let index = document.hierarchyIndex
             guard index.ancestors(of: parent).count < 64 else {
                 error = "This container is at the maximum supported nesting depth. Select a shallower layer before drawing."; return nil
             }
@@ -164,7 +164,7 @@ extension EditorSession {
         } }
     }
     func canMove(_ ids: Set<UUID>, to parent: UUID?) -> Bool {
-        let index = document.project.hierarchyIndex, roots = index.roots(in: ids)
+        let index = document.hierarchyIndex, roots = index.roots(in: ids)
         guard !roots.isEmpty, roots.allSatisfy({ index.canEdit($0) }) else { return false }
         if let parent {
             guard let target = index.nodes[parent], target.kind != .object, !index.locked.contains(parent), !index.hidden.contains(parent),
@@ -175,7 +175,7 @@ extension EditorSession {
     }
     func moveNodes(_ ids: Set<UUID>, to parent: UUID?) {
         guard canMove(ids, to: parent) else { return }
-        let index = document.project.hierarchyIndex, roots = index.roots(in: ids)
+        let index = document.hierarchyIndex, roots = index.roots(in: ids)
         let moved = roots.compactMap { index.nodes[$0] }
         structuralEdit("Move to Layer or Group") { p in p.updateHierarchy { nodes in
             VectorProject.remove(Set(roots), from: &nodes)
@@ -185,7 +185,7 @@ extension EditorSession {
         if let scope = isolatedGroupID, roots.contains(scope) { isolatedGroupID = nil }
     }
     func selectionProject(_ ids: Set<UUID>? = nil) -> VectorProject? {
-        let index = document.project.hierarchyIndex, roots = index.roots(in: ids ?? selection)
+        let index = document.hierarchyIndex, roots = index.roots(in: ids ?? selection)
         guard !roots.isEmpty else { return nil }
         var nodes = roots.compactMap { index.nodes[$0] }
         // Preserve effective visibility/locking when copying a child out of its ancestors.
@@ -232,7 +232,7 @@ extension EditorSession {
         guard (try? source.validated()) != nil, let destination = insertionDestination() else { return }
         let copy = remapped(source, offset: CGSize(width: 20, height: 20), suffix: "")
         // A layer may only be pasted into the document or another layer.
-        if let parent = destination.parent, document.project.hierarchyIndex.nodes[parent]?.kind == .group,
+        if let parent = destination.parent, document.hierarchyIndex.nodes[parent]?.kind == .group,
            copy.rootNodes.contains(where: { $0.kind == .layer }) { error = "Layers cannot be placed inside a group. Exit the group before pasting a layer."; return }
         if structuralEdit("Paste", { merge(copy, into: &$0, parent: destination.parent) }) {
             selection = Set(copy.rootNodes.map(\.id)); reconcileHierarchyState()

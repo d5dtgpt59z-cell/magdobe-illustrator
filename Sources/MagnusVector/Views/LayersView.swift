@@ -6,7 +6,7 @@ struct LayersView: View {
     @ObservedObject var session: EditorSession
     @ObservedObject var document: VectorDocument
     var body: some View {
-        let index = document.project.hierarchyIndex
+        let index = document.hierarchyIndex
         VStack(spacing: 0) {
             HStack {
                 Text("LAYERS").font(.system(size: 10, weight: .semibold)).tracking(1.3).foregroundStyle(.secondary)

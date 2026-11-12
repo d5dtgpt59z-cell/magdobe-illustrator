@@ -54,46 +54,54 @@ struct NativeLayerOutline: NSViewRepresentable {
         var presentation: [UUID: Presentation] = [:]
         private var lastRows: [Presentation] = []
         private var updating = false
+        private var revision: UInt64?
+        private var expanded: Set<UUID> = []
+        private var selection: Set<UUID> = []
         init(_ session: EditorSession) { self.session = session }
 
         func update() {
             guard let outline else { return }
             updating = true; defer { updating = false }
             if let width = outline.enclosingScrollView?.contentSize.width, width > 0 { outline.tableColumns.first?.width = max(80, width - 32) }
-            let project = session.document.project, index = project.hierarchyIndex
-            let rows = index.order.compactMap { id -> Presentation? in
-                guard let node = index.nodes[id] else { return nil }
-                let shape = index.shapeIndices[id].map { project.shapes[$0] }
-                let symbol: String
-                switch node.kind {
-                case .layer: symbol = "square.3.layers.3d"
-                case .group: symbol = "folder"
-                case .object:
-                    switch shape?.kind {
-                    case .ellipse: symbol = "circle"
-                    case .text: symbol = "textformat"
-                    case .path: symbol = "point.topleft.down.to.point.bottomright.curvepath"
-                    default: symbol = "rectangle"
+            let changed = revision != session.document.revision
+            guard changed || expanded != session.expandedNodes || selection != session.selection else { return }
+            defer { revision = session.document.revision; expanded = session.expandedNodes; selection = session.selection }
+            let project = session.document.project, index = session.document.hierarchyIndex
+            if changed {
+                let rows = index.order.compactMap { id -> Presentation? in
+                    guard let node = index.nodes[id] else { return nil }
+                    let shape = index.shapeIndices[id].map { project.shapes[$0] }
+                    let symbol: String
+                    switch node.kind {
+                    case .layer: symbol = "square.3.layers.3d"
+                    case .group: symbol = "folder"
+                    case .object:
+                        switch shape?.kind {
+                        case .ellipse: symbol = "circle"
+                        case .text: symbol = "textformat"
+                        case .path: symbol = "point.topleft.down.to.point.bottomright.curvepath"
+                        default: symbol = "rectangle"
+                        }
                     }
+                    return Presentation(id: id, parent: index.parents[id], kind: node.kind, name: shape?.name ?? node.name, symbol: symbol,
+                        color: shape?.fill ?? shape?.stroke ?? .ink, visible: shape?.visible ?? node.visible, locked: shape?.locked ?? node.locked,
+                        effectiveHidden: index.hidden.contains(id), effectiveLocked: index.locked.contains(id))
                 }
-                return Presentation(id: id, parent: index.parents[id], kind: node.kind, name: shape?.name ?? node.name, symbol: symbol,
-                    color: shape?.fill ?? shape?.stroke ?? .ink, visible: shape?.visible ?? node.visible, locked: shape?.locked ?? node.locked,
-                    effectiveHidden: index.hidden.contains(id), effectiveLocked: index.locked.contains(id))
-            }
-            if rows != lastRows {
-                let oldItems = items
-                items = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, oldItems[$0.id] ?? Item($0.id)) })
-                presentation = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
-                func tree(_ nodes: [VectorNode]) -> [Item] { nodes.reversed().compactMap { node in
-                    guard let item = items[node.id] else { return nil }
-                    item.children = tree(node.children); return item
-                } }
-                roots = tree(project.rootNodes)
-                lastRows = rows
-                let origin = outline.enclosingScrollView?.contentView.bounds.origin
-                outline.reloadData()
-                for id in index.order where session.expandedNodes.contains(id) { if let item = items[id] { outline.expandItem(item) } }
-                if let origin { outline.enclosingScrollView?.contentView.scroll(to: origin) }
+                if rows != lastRows {
+                    let oldItems = items
+                    items = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, oldItems[$0.id] ?? Item($0.id)) })
+                    presentation = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+                    func tree(_ nodes: [VectorNode]) -> [Item] { nodes.reversed().compactMap { node in
+                        guard let item = items[node.id] else { return nil }
+                        item.children = tree(node.children); return item
+                    } }
+                    roots = tree(project.rootNodes)
+                    lastRows = rows
+                    let origin = outline.enclosingScrollView?.contentView.bounds.origin
+                    outline.reloadData()
+                    for id in index.order where session.expandedNodes.contains(id) { if let item = items[id] { outline.expandItem(item) } }
+                    if let origin { outline.enclosingScrollView?.contentView.scroll(to: origin) }
+                }
             }
             for id in index.order where index.nodes[id]?.kind != .object {
                 guard let item = items[id] else { continue }
@@ -182,7 +190,7 @@ struct NativeLayerOutline: NSViewRepresentable {
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
             guard let outline, let item = outline.item(atRow: outline.clickedRow) as? Item else { return }
-            let index = session.document.project.hierarchyIndex
+            let index = session.document.hierarchyIndex
             guard let node = index.nodes[item.id] else { return }
             let ids = session.selection.contains(item.id) ? session.selection : [item.id]
             func add(_ title: String, enabled: Bool = true, to target: NSMenu? = nil, action: @escaping () -> Void) {

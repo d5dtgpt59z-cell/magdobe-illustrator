@@ -20,6 +20,16 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     var lastFitRequest: UUID?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    private var renderedRevision: UInt64?
+    private var artwork: CanvasArtwork?
+    private var preview: CGImage?
+    private var previewTask: Task<Void, Never>?
+    private var detailTask: Task<Void, Never>?
+    private var detail: (image: CGImage, viewport: CGRect, scale: Double)?
+    private var settleWork: DispatchWorkItem?
+    private var lastZoom: Double?
+    private var lastPan: CGSize?
+    private var navigating = false
     private var down = CGPoint.zero
     private var lastViewPoint = CGPoint.zero
     private var baseline: [VectorShape] = []
@@ -40,6 +50,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        session.documentWindow = window
         DispatchQueue.main.async { [weak self] in self?.fitArtboard() }
     }
     private var origin: CGPoint {
@@ -59,6 +70,8 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     }
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        ctx.saveGState(); defer { ctx.restoreGState() }
+        ctx.clip(to: bounds)
         NSColor(patternImage: PaperTexture.tile).setFill(); bounds.fill()
         ctx.saveGState()
         ctx.translateBy(x: origin.x, y: origin.y); ctx.scaleBy(x: session.zoom, y: session.zoom)
@@ -75,7 +88,8 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             for y in stride(from: 0.0, through: project.height, by: spacing) { ctx.move(to: CGPoint(x: 0, y: y)); ctx.addLine(to: CGPoint(x: project.width, y: y)) }
             ctx.strokePath()
         }
-        VectorRenderer.draw(project, in: ctx)
+        drawArtwork(in: ctx)
+
         if let stroke = freehand {
             ctx.saveGState(); ctx.setAlpha(stroke.settings.opacity)
             ctx.addPath(stroke.geometry())
@@ -88,7 +102,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
         ctx.restoreGState()
         let accent = NSColor.controlAccentColor
         ctx.setStrokeColor(accent.cgColor); ctx.setFillColor(accent.cgColor); ctx.setLineWidth(1 / session.zoom)
-        let hierarchy = project.hierarchyIndex
+        let hierarchy = session.document.hierarchyIndex
         for shape in session.selectedShapes where !hierarchy.hidden.contains(shape.id) {
             ctx.addPath(shape.cgPath); ctx.strokePath()
             if session.tool == .node || shape.id == session.activePath { drawNodes(shape, context: ctx) }
@@ -105,6 +119,57 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
         let label = "ARTBOARD 1  ·  \(Int(project.width)) × \(Int(project.height))"
         (label as NSString).draw(at: CGPoint(x: origin.x, y: max(8, origin.y - 23)), withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 10, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor])
     }
+    private func drawArtwork(in context: CGContext) {
+        let document = session.document
+        if renderedRevision != document.revision {
+            previewTask?.cancel(); detailTask?.cancel(); detailTask = nil; preview = nil; detail = nil
+            let snapshot = CanvasArtwork(document.project, hierarchy: document.hierarchyIndex)
+            artwork = snapshot; renderedRevision = document.revision
+            let revision = document.revision
+            if snapshot.entries.count >= 2000 {
+                previewTask = Task { [weak self] in
+                    let work = Task.detached(priority: .utility) { snapshot.navigationPreview() }
+                    let image = await withTaskCancellationHandler(operation: { await work.value }, onCancel: { work.cancel() })
+                    guard !Task.isCancelled, let self, self.session.document.revision == revision else { return }
+                    self.preview = image; self.needsDisplay = true
+                }
+            }
+        }
+        if lastZoom != session.zoom || lastPan != session.pan {
+            lastZoom = session.zoom; lastPan = session.pan; navigating = true
+            detailTask?.cancel(); detailTask = nil
+            settleWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.navigating = false; self?.needsDisplay = true }
+            settleWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        }
+        let viewport = CGRect(x: -origin.x / session.zoom, y: -origin.y / session.zoom,
+                              width: bounds.width / session.zoom, height: bounds.height / session.zoom)
+        let scale = session.zoom * Double(window?.backingScaleFactor ?? 2)
+        if let artwork, artwork.entries.count >= 2000 {
+            if !navigating, detailTask == nil, detail?.viewport != viewport || detail?.scale != scale {
+                let revision = document.revision
+                detailTask = Task { [weak self] in
+                    let work = Task.detached(priority: .userInitiated) { artwork.viewportImage(viewport, pixelsPerUnit: scale) }
+                    let image = await withTaskCancellationHandler(operation: { await work.value }, onCancel: { work.cancel() })
+                    guard !Task.isCancelled, let self, self.session.document.revision == revision else { return }
+                    self.detailTask = nil
+                    if let image { self.detail = (image, viewport, scale); self.needsDisplay = true }
+                }
+            }
+            if let detail, detail.viewport == viewport, detail.scale == scale {
+                drawImage(detail.image, rect: viewport, in: context)
+            } else if let preview { drawImage(preview, rect: artwork.artboard, in: context) }
+            else { artwork.draw(in: context, viewport: viewport.insetBy(dx: -2 / session.zoom, dy: -2 / session.zoom)) }
+        } else { artwork?.draw(in: context, viewport: viewport.insetBy(dx: -2 / session.zoom, dy: -2 / session.zoom)) }
+    }
+    private func drawImage(_ image: CGImage, rect: CGRect, in context: CGContext) {
+        context.saveGState(); defer { context.restoreGState() }
+        context.interpolationQuality = .high
+        context.translateBy(x: rect.minX, y: rect.maxY); context.scaleBy(x: 1, y: -1)
+        context.draw(image, in: CGRect(origin: .zero, size: rect.size))
+    }
+    deinit { previewTask?.cancel(); detailTask?.cancel(); settleWork?.cancel() }
     private func corners(_ r: CGRect) -> [CGPoint] {
         [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY), CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.minX, y: r.maxY)]
     }
@@ -129,7 +194,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
     }
     private func distance(_ a: CGPoint, _ b: CGPoint) -> Double { hypot(a.x - b.x, a.y - b.y) }
     private func pick(_ p: CGPoint) -> VectorShape? {
-        let index = session.document.project.hierarchyIndex
+        let index = session.document.hierarchyIndex
         return session.document.project.shapes.reversed().first {
             index.canvasTarget(for: $0.id, inside: session.isolatedGroupID) != nil && $0.hitTest(p, tolerance: 5 / session.zoom)
         }
@@ -142,16 +207,16 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             freehand?.append(down, pressure: tabletPressure(event))
             needsDisplay = true; return
         }
+        if spaceHeld || session.tool == .hand { panning = true; NSCursor.closedHand.set(); return }
         initialSelection = session.selection; baseline = session.document.project.shapes
         baselineIndices = Dictionary(uniqueKeysWithValues: baseline.enumerated().map { ($0.element.id, $0.offset) })
-        if spaceHeld || session.tool == .hand { panning = true; NSCursor.closedHand.set(); return }
         switch session.tool {
         case .select:
             if event.clickCount == 1, let box = session.selectionBounds, !session.editableShapeIDs.isEmpty, let corner = corners(box).firstIndex(where: { distance($0, down) < 8 / session.zoom }) {
                 resizeCorner = corner; resizeBounds = box; dragShapeIDs = session.editableShapeIDs; session.beginTransaction(); return
             }
-            if let hit = pick(down), let target = session.document.project.hierarchyIndex.canvasTarget(for: hit.id, inside: session.isolatedGroupID) {
-                if event.clickCount == 2, session.document.project.hierarchyIndex.nodes[target]?.kind == .group {
+            if let hit = pick(down), let target = session.document.hierarchyIndex.canvasTarget(for: hit.id, inside: session.isolatedGroupID) {
+                if event.clickCount == 2, session.document.hierarchyIndex.nodes[target]?.kind == .group {
                     session.enterGroup(target); needsDisplay = true; return
                 }
                 if event.modifierFlags.contains(.shift) {
@@ -262,7 +327,7 @@ final class CanvasView: NSView, NSUserInterfaceValidations {
             }
         } else if marquee != nil {
             marquee = normalized(down, p)
-            let index = session.document.project.hierarchyIndex
+            let index = session.document.hierarchyIndex
             let hits = session.document.project.shapes.filter { marquee!.intersects($0.bounds) }
             session.selection = Set(hits.compactMap { index.canvasTarget(for: $0.id, inside: session.isolatedGroupID) }).union(event.modifierFlags.contains(.shift) ? initialSelection : [])
         } else if session.tool == .pen, let id = session.activePath, let i = session.document.project.shapes.firstIndex(where: { $0.id == id }), let j = session.document.project.shapes[i].anchors.indices.last {

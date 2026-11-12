@@ -45,7 +45,7 @@ class Codex:
                 except ValueError: pass
             self.q.put(None)
         threading.Thread(target=read,daemon=True).start()
-        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.7.0'},'capabilities':{'experimentalApi':True}})
+        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.7.1'},'capabilities':{'experimentalApi':True}})
         self.send({'method':'initialized','params':{}})
     def send(self, message):
         self.proc.stdin.write(json.dumps(message)+'\n'); self.proc.stdin.flush()

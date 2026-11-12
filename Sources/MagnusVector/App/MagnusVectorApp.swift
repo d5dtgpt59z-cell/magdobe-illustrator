@@ -38,6 +38,12 @@ struct EditorCommands: Commands {
             }.keyboardShortcut("a")
             Button("Deselect") { session?.selection = [] }.keyboardShortcut("a", modifiers: [.command, .shift])
         }
+        CommandGroup(replacing: .saveItem) {
+            Button("Save") { session?.saveProject() }.keyboardShortcut("s").disabled(session == nil || session?.savingProject == true)
+            Button("Save As…") { session?.saveProject(saveAs: true) }.keyboardShortcut("s", modifiers: [.command, .shift, .option]).disabled(session == nil || session?.savingProject == true)
+            Button("Duplicate Document") { NSApp.sendAction(#selector(NSDocument.duplicate(_:)), to: nil, from: nil) }
+                .keyboardShortcut("s", modifiers: [.command, .shift]).disabled(session == nil)
+        }
         CommandGroup(after: .saveItem) {
             Menu("Export") { ForEach(ExportFormat.allCases, id: \.self) { format in Button("\(format.rawValue.uppercased())…") { session?.export(format) } } }
             .disabled(session == nil)

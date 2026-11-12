@@ -21,7 +21,7 @@ struct ContentView: View {
                     Button { session.exitGroup() } label: { Label("Back", systemImage: "chevron.left") }
                         .buttonStyle(.borderless).help("Exit this group (Escape)")
                     Image(systemName: "folder")
-                    Text("Editing \(document.project.hierarchyIndex.nodes[groupID]?.name ?? "Group")").fontWeight(.medium)
+                    Text("Editing \(document.hierarchyIndex.nodes[groupID]?.name ?? "Group")").fontWeight(.medium)
                     Text("Double-click a nested group to go deeper").foregroundStyle(.secondary)
                     Spacer()
                 }.font(.system(size: 11)).padding(.horizontal, 16).frame(height: 30)
@@ -70,6 +70,7 @@ struct ContentView: View {
                 Toggle(isOn: $session.grid) { Image(systemName: "square.grid.3x3") }.help("Show grid")
                 Button { session.fit() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }.help("Fit artboard (⌘0)").accessibilityLabel("Fit Artboard")
                 Button { session.saveProject() } label: { Label("Save Project", systemImage: "square.and.arrow.down").labelStyle(.titleAndIcon) }
+                    .disabled(session.savingProject)
                     .help("Save this editable Magdobe project (⌘S). Reopen it to keep editing objects and layers.")
                 Menu {
                     ForEach(ExportFormat.allCases, id: \.self) { format in Button("Export \(format.rawValue.uppercased())…") { session.export(format) } }

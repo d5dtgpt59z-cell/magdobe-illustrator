@@ -4,7 +4,7 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.7 adds visible project saving and a shared SVG/PDF/PNG export panel, including saving directly from the generated-artwork preview. It includes fine image-to-vector tracing, freehand Pencil, editable brushes, real groups and nested layers, and a signed-in Codex workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.7.1 fixes native save-dialog presentation and speeds up navigation in dense illustrations. It includes visible project saving and a shared SVG/PDF/PNG export panel, including saving directly from the generated-artwork preview. It includes fine image-to-vector tracing, freehand Pencil, editable brushes, real groups and nested layers, and a signed-in Codex workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
 
 ## Open the app
 
@@ -23,7 +23,7 @@ Build and launch from this directory:
 ./script/build_and_run.sh
 ```
 
-The script stages a local `.app`, signs it for local use, and launches it. Pass `--build-only` to update the bundle without restarting an active document session. It uses installed Xcode when available without changing the system developer-tool selection. macOS 14 or later is required. The native editor has no third-party Swift package dependencies. The build script installs a local Python environment with VTracer 0.6.15 and svgpathtools 1.8.0 for vector conversion. The project-local Codex Run action calls this script.
+The script builds an optimized release app, stages a local `.app`, signs it for local use, and launches it. `--debug` builds with debugging enabled. Pass `--build-only` to update the bundle without restarting an active document session. It uses installed Xcode when available without changing the system developer-tool selection. macOS 14 or later is required. The native editor has no third-party Swift package dependencies. The build script installs a local Python environment with VTracer 0.6.15 and svgpathtools 1.8.0 for vector conversion. The project-local Codex Run action calls this script.
 
 For a new runtime, set `MAGDOBE_PYTHON=python3.11` before building if the default `python3` is too new. Existing supported runtimes are reused. Setup rejects Python 3.15+, which crashed the pinned tracer in CI; CI uses Python 3.11.
 
@@ -33,7 +33,7 @@ On the canvas, click **Save Project** or press **Command-S** to save an editable
 
 In **Draw with Codex**, a finished preview has its own **Save Project…** button and **Export** menu. Save the generated artwork directly without inserting it into the canvas. The preview panel offers **Editable Project / SVG / PDF / PNG** with an explanation of each format. Saving the preview does not save or replace the canvas document.
 
-Exports and preview project saves run in the background, write atomically, and show success or an actionable error. After saving, choose **Open in Magdobe**, **Open in Safari**, or **Open in Preview**, depending on the format, or **Show in Finder**. Existing SVG options are retained. See [save/export behavior and validation](docs/save-and-export.md).
+Exports and preview project saves run in the background, write atomically, and show success or an actionable error. After saving, choose **Open in Magdobe**, **Open in Safari**, or **Open in Preview**, depending on the format, or **Show in Finder**. Existing SVG options are retained. Dense artwork now uses cached paths, a responsive navigation preview, and background viewport rendering; exports always retain the original vectors. See [save/export behavior and validation](docs/save-and-export.md).
 
 ## Draw with Codex
 
