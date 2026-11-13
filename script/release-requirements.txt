@@ -1,0 +1,13 @@
+# Build environment only. End users install none of these packages.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
+altgraph==0.17.5
+macholib==1.16.4
+packaging==26.3
+setuptools==82.0.1
+vtracer==0.6.15
+svgpathtools==1.8.0
+numpy==2.0.2
+scipy==1.13.1
+svgwrite==1.4.3
+certifi==2026.10.23

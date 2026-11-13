@@ -19,48 +19,8 @@ CONFIGURATION=release
 if [[ "$MODE" == "--debug" || "$MODE" == "debug" ]]; then CONFIGURATION=debug; fi
 swift build -c "$CONFIGURATION"
 BUILD_BINARY="$(swift build -c "$CONFIGURATION" --show-bin-path)/$APP_NAME"
-mkdir -p "$APP_CONTENTS/MacOS"
-cp "$BUILD_BINARY" "$APP_BINARY.next"
-chmod +x "$APP_BINARY.next"
-mv -f "$APP_BINARY.next" "$APP_BINARY"
-mkdir -p "$APP_CONTENTS/Resources/Artwork"
-cp "$ROOT_DIR/Resources/Artwork/artwork_worker.py" "$APP_CONTENTS/Resources/Artwork/"
-cp "$ROOT_DIR/Resources/Artwork/provider_api.py" "$APP_CONTENTS/Resources/Artwork/"
-cp "$ROOT_DIR/Resources/AppIcon/Magdobe.icns" "$APP_CONTENTS/Resources/"
-python3 - "$APP_CONTENTS/Resources/runtime.json" <<'PYCONFIG'
-import json,os,shutil,sys
-from pathlib import Path
-Path(sys.argv[1]).write_text(json.dumps({'python':str(Path.home()/'Library/Application Support/Magdobe Illustrator/Runtime/bin/python'),'codex':shutil.which('codex') or '/opt/homebrew/bin/codex'}))
-PYCONFIG
-cat > "$APP_CONTENTS/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>$APP_NAME</string>
-<key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-<key>CFBundleName</key><string>Magdobe Illustrator</string>
-<key>CFBundleDisplayName</key><string>Magdobe Illustrator</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.8.0</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>LSMinimumSystemVersion</key><string>14.0</string>
-<key>NSPrincipalClass</key><string>NSApplication</string>
-<key>CFBundleIconFile</key><string>Magdobe</string>
-<key>NSHighResolutionCapable</key><true/>
-<key>UTExportedTypeDeclarations</key><array><dict>
-<key>UTTypeIdentifier</key><string>com.builtbymagnus.vector</string>
-<key>UTTypeDescription</key><string>Magdobe Illustrator Project</string>
-<key>UTTypeConformsTo</key><array><string>public.json</string></array>
-<key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>mvector</string></array></dict>
-</dict></array>
-<key>CFBundleDocumentTypes</key><array><dict>
-<key>CFBundleTypeName</key><string>Magdobe Illustrator Project</string>
-<key>CFBundleTypeRole</key><string>Editor</string>
-<key>LSHandlerRank</key><string>Owner</string>
-<key>LSItemContentTypes</key><array><string>com.builtbymagnus.vector</string></array>
-</dict></array>
-</dict></plist>
-PLIST
+python3 "$ROOT_DIR/script/app_bundle.py" --binary "$BUILD_BINARY" --output "$APP_BUNDLE" \
+  --runtime-python "$HOME/Library/Application Support/Magdobe Illustrator/Runtime/bin/python"
 codesign --force --sign - "$APP_BUNDLE" >/dev/null
 case "$MODE" in
  --build-only|build-only) echo "Magdobe Illustrator built; current app session left running." ;;

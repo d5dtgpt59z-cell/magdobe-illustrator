@@ -4,13 +4,19 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.8 lets you choose your image provider and an optional Claude prompt assistant, using your own API keys or supported CLI sign-ins. Generated images become editable vector objects in a workspace with real groups and layers, brushes, native project saving, and SVG/PDF/PNG export. Open source under the [MIT license](LICENSE). The application uses original source code and no Adobe binaries or assets.
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.8.1 adds a self-contained Mac release-build workflow. Choose your image provider and an optional Claude prompt assistant, using your own API keys or supported CLI sign-ins. Generated images become editable vector objects in a workspace with real groups and layers, brushes, native project saving, and SVG/PDF/PNG export. Open source under the [MIT license](LICENSE). The application uses original source code and no Adobe binaries or assets.
 
 ## Open the app
 
-The built application is `dist/Magdobe Illustrator.app`. On launch, choose **New Document** or open an existing `.mvector` project.
+**Download status:** a signed, notarized public download has not been published. The portable build described below produces an ad-hoc-signed local preview. Developer ID signing, notarization and distribution verification are separate steps.
 
-Requirements: macOS 14+, Xcode with a Swift 6 toolchain, and Python 3.9–3.14 with `venv`/`pip` (3.11 recommended). The first app build downloads the two pinned vector-conversion packages. AI providers are optional for manual drawing, local image vectorization, and export. Choose Codex with an existing ChatGPT sign-in, or configure your own image API in **Settings → AI Providers**. Codex and Claude Code connections require their respective installed, signed-in CLIs; API connections do not require those CLIs.
+A packaged application requires macOS 14+ and a Mac matching the package's architecture. Its artwork helper and vector-conversion runtime travel inside the app: users do not need to install Python, Homebrew or Xcode. On launch, choose **New Document** or open an existing `.mvector` project.
+
+AI providers are optional for manual drawing, local image vectorization and export. API connections need your own provider account/key and internet access. Choose a service in **Settings → AI Providers**. Codex and Claude Code are optional connections requiring their respective installed, signed-in CLIs; API connections do not require those CLIs.
+
+## Build from source
+
+Developer requirements: macOS 14+, Xcode with a Swift 6 toolchain, and Python 3.9–3.14 with `venv`/`pip` (3.11 recommended). The first development build downloads the two pinned vector-conversion packages.
 
 ```sh
 git clone https://github.com/d5dtgpt59z-cell/magdobe-illustrator.git
@@ -23,9 +29,21 @@ Build and launch from this directory:
 ./script/build_and_run.sh
 ```
 
-The script builds an optimized release app, stages a local `.app`, signs it for local use, and launches it. `--debug` builds with debugging enabled. Pass `--build-only` to update the bundle without restarting an active document session. It uses installed Xcode when available without changing the system developer-tool selection. macOS 14 or later is required. The native editor has no third-party Swift package dependencies. The build script installs a local Python environment with VTracer 0.6.15 and svgpathtools 1.8.0 for vector conversion. The project-local Codex Run action calls this script.
+The script builds an optimized development app at `dist/Magdobe Illustrator.app`, signs it for local use, and launches it. `--debug` builds with debugging enabled. Pass `--build-only` to update the bundle without restarting an active document session. It uses installed Xcode when available without changing the system developer-tool selection. The native editor has no third-party Swift package dependencies. The build script installs a local Python environment with VTracer 0.6.15 and svgpathtools 1.8.0 for vector conversion. The project-local Codex Run action calls this script.
 
 For a new runtime, set `MAGDOBE_PYTHON=python3.11` before building if the default `python3` is too new. Existing supported runtimes are reused. Setup rejects Python 3.15+, which crashed the pinned tracer in CI; CI uses Python 3.11.
+
+## Build a portable Mac app
+
+Release builders need Xcode with Swift 6 and its command-line tools. The build script downloads a pinned, checksum-verified standalone Python 3.11 runtime and prepares its build environment; a separate Homebrew or global Python 3.11 installation is not required. From the repository root:
+
+```sh
+./script/build_release.sh
+```
+
+This prepares `dist/release/Magdobe Illustrator.app` with a bundled artwork helper, Python runtime, vector-conversion dependencies, HTTPS certificate roots and third-party notices. Build dependencies are pinned in `script/release-requirements.txt`, with the standalone runtime asset and checksum recorded in the Python release lock. Each build targets one architecture, `arm64` or `x86_64`, matching its Python runtime. The script keeps the development app separate and refuses to overwrite an existing release app.
+
+The result is an ad-hoc-signed preview for local validation. It has not completed Developer ID signing or Apple notarization and is not a verified public download. Follow [Mac distribution](docs/macos-distribution.md) for the explicit signing, notarization, stapling, verification and packaging steps using your own signing identity and notarytool Keychain profile. These steps do not publish anything automatically.
 
 ## Save and export
 
@@ -49,7 +67,7 @@ API keys are stored in macOS Keychain for the provider and full API endpoint, se
 
 Choose a detail setting and **Rebuild Last Image** to retrace the last completed source without another image request. With a preview open, the button becomes **Rebuild These Vectors**. Use **Save Project…** or **Export → SVG…** in the preview to save the vectors directly, or insert them with **Add to Canvas**. Existing canvas edits stay unchanged; rebuilding creates new artwork from the source image. Exporting an older, simplified document alone will not add detail. See [vector detail, measurements, and limits](docs/vector-detail.md).
 
-Source images, prompts, SVGs, vector previews, and native projects are retained in `~/Library/Application Support/Magdobe Illustrator/Artwork/`. Use **Show Source Files** to find a result. The Python runtime lives alongside that folder under `Runtime/`; the app bundle's `runtime.json` points to that runtime and the local Codex executable.
+Source images, prompts, SVGs, vector previews, and native projects are retained in `~/Library/Application Support/Magdobe Illustrator/Artwork/`. Use **Show Source Files** to find a result. Packaged builds run the artwork helper inside the app. Development builds use the local Python environment under `~/Library/Application Support/Magdobe Illustrator/Runtime/`, referenced by their `runtime.json`. Optional Codex connections discover the installed CLI at runtime, so installing Codex later does not require rebuilding Magdobe.
 
 The cream paper texture is the editor workspace. The white artboard and exported artwork retain their existing behavior. Custom editor and generation controls have native hover tooltips. The generated app icon is included in `Resources/AppIcon/`.
 
@@ -119,17 +137,29 @@ Tool-letter shortcuts apply when the canvas has focus. Enter a numeric inspector
 ./script/build_and_run.sh --verify
 ```
 
+For a portable release preview, inspect its bundle layout and dependencies without signing or launching it:
+
+```sh
+python3 script/release.py verify --app "dist/release/Magdobe Illustrator.app" --mode preview --json
+```
+
+Preview verification checks portability; the distribution guide documents the separate signed and notarized readiness checks.
+
 The tests cover project round trips, curve conversion/resizing, hit testing, compound contours and holes, compatibility with earlier projects, SVG XML/escaping, PDF/transparent PNG output, document validation, undo/redo, locks, duplication, and discarded single-anchor pen paths, and generated-artwork insertion with artboard sizing, compound contours, ID remapping, and undo/redo. The test script selects installed Xcode because some Command Line Tools installations do not include XCTest.
 
 A live Codex App Server check generated a sample illustration through the existing ChatGPT sign-in and converted it into 16 editable objects. The native drawing panel completed the user-entered Optimus Prime versus Garbage Pail Kids request and displayed a vector preview containing 2,199 editable objects with Add to Canvas enabled.
 
 Native UI checks completed: drawing an ellipse; undo and redo; converting to a path; dragging an anchor; drawing a curved open pen path; inserting text; saving and reopening a three-object project; copying and pasting a vector object; undoing the paste; and exporting SVG. The drawing and exported SVG are in `QA/`.
 
-The current native suite has 69 passing tests, including all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Forty-three additional Python tests cover provider HTTP adapters and worker routing, transient credentials, restricted Claude CLI execution, image-generation responses, safety rejections, usage limits, interleaved protocol events, image data validation, retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+The native suite covers all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Python tests cover provider HTTP adapters and worker routing, transient credentials, restricted Claude CLI execution, image-generation responses, safety rejections, usage limits, interleaved protocol events, image data validation, retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+
+Portable-runtime tests cover moving the app, bundled-helper preference, source-build fallback, discovering a newly installed Codex CLI, clear missing-runtime errors and isolation of external CLI processes from the frozen Python environment.
 
 Provider UI validation completed a local fixture image API request through a temporary Keychain entry, producing 3,835 editable objects. A fixture Claude Messages response completed **Improve Prompt → Review Prompt → Use This Prompt**. Temporary test keys were removed. Keyed services were tested with offline and local fixtures, not live OpenAI/Gemini/OpenRouter/Anthropic credentials. The Claude Code CLI was not installed in the development environment, so its live sign-in and prompt-improvement flow remain unverified. The Codex connection was tested with both successful image generation and an actual provider safety rejection. See [the provider validation details](docs/ai-providers.md#validation).
 
 Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
+
+Seventeen distribution checks cover release gating and an actual relocated frozen worker, including offline tracing, a fixture image API, and HTTPS certificate verification. These tests run on the development Mac and do not replace a quarantined installation test on another Mac. See [Mac distribution and signing](docs/macos-distribution.md).
 
 ## Next development stages
 
@@ -138,7 +168,7 @@ Groups/layers tests also cover native outline selection, nested selection/isolat
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.8 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
+Version 0.8.1 does not import SVG/AI files or offer Illustrator feature parity. Distribution tooling is included; a signed, notarized public download has not been released.
 
 ## Source map
 
@@ -151,6 +181,6 @@ Version 0.8 does not import SVG/AI files or offer Illustrator feature parity. Di
 
 ## Project status and assets
 
-This is an early native editor, with source builds for local use. A notarized installer and general SVG import are not included. The application source is available under the [MIT license](LICENSE). Clone it, try it, break it, improve it. Make something.
+This is an early native editor with development builds and a portable release-build workflow. Developer ID signing and notarization remain release steps before a verified public download. General SVG import is not included. The application source is available under the [MIT license](LICENSE). Clone it, try it, break it, improve it. Make something.
 
 The icon and illustration regression fixtures were generated during development; they are examples, not official brand or character artwork. Third-party names, characters and trademarks remain the property of their respective owners; the software license does not grant rights to those properties.

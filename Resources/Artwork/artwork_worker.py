@@ -35,10 +35,34 @@ def stop(*_):
 signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
 
+def external_process_environment():
+    """Do not make external provider CLIs inherit the frozen Python helper's loader state."""
+    environment=os.environ.copy()
+    if not getattr(sys,'frozen',False): return environment
+    for name in list(environment):
+        if name.startswith('_PYI_'): environment.pop(name,None)
+    for name in ('PYTHONHOME','PYTHONPATH','PYTHONEXECUTABLE','PYTHONNOUSERSITE','__PYVENV_LAUNCHER__','PYINSTALLER_RESET_ENVIRONMENT'):
+        environment.pop(name,None)
+    for name in ('DYLD_LIBRARY_PATH','DYLD_FALLBACK_LIBRARY_PATH','LD_LIBRARY_PATH'):
+        original=environment.pop(name+'_ORIG',None)
+        if original: environment[name]=original
+        else: environment.pop(name,None)
+    certificate=environment.get('SSL_CERT_FILE')
+    root=getattr(sys,'_MEIPASS',None)
+    if certificate and root and Path(certificate).is_absolute():
+        # macOS bundles may symlink Frameworks/certifi into Resources/certifi.
+        for candidate,base in [(Path(os.path.abspath(certificate)),Path(os.path.abspath(root))),
+                               (Path(certificate).resolve(),Path(root).resolve())]:
+            try: candidate.relative_to(base)
+            except ValueError: continue
+            environment.pop('SSL_CERT_FILE',None); break
+    return environment
+
+
 class Codex:
     def __init__(self, executable):
         global server
-        server = subprocess.Popen([executable, 'app-server', '--stdio', '--disable', 'shell_tool', '--disable', 'apps'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        server = subprocess.Popen([executable, 'app-server', '--stdio', '--disable', 'shell_tool', '--disable', 'apps'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1, env=external_process_environment())
         self.proc=server; self.q=queue.Queue(); self.pending=deque(); self.counter=0
         def read():
             for line in self.proc.stdout:
@@ -227,7 +251,7 @@ def claude_cli(prompt=None,job=None,model=''):
         args=[executable,'-p','--output-format','json','--tools','','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--no-session-persistence','--setting-sources','','--system-prompt','Refine the user’s artwork brief into a clear image-generation prompt. Preserve the requested subjects, intent, and exact text. Do not add subjects or change the concept. Return only the improved prompt. Use no tools.']
         if model: args+=['--model',model]
         supplied=prompt
-    server=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,cwd=str(job) if job else None)
+    server=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,cwd=str(job) if job else None,env=external_process_environment())
     try: output,errors=server.communicate(input=supplied,timeout=180 if prompt else 25)
     except subprocess.TimeoutExpired:
         stop(); raise RuntimeError('Claude Code did not respond in time. Check its sign-in and try again.')

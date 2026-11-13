@@ -24,6 +24,12 @@ struct MagnusVectorApp: App {
 struct EditorCommands: Commands {
     @FocusedObject private var session: EditorSession?
     var body: some Commands {
+        CommandGroup(after: .help) {
+            Divider()
+            Button("Magdobe Support") { NSWorkspace.shared.open(URL(string: "https://builtbymagnus.com/magdobe/support/")!) }
+            Button("Privacy Policy") { NSWorkspace.shared.open(URL(string: "https://builtbymagnus.com/magdobe/privacy/")!) }
+            Button("Magdobe on GitHub") { NSWorkspace.shared.open(URL(string: "https://github.com/d5dtgpt59z-cell/magdobe-illustrator")!) }
+        }
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") { session?.undo() }.keyboardShortcut("z").disabled(session?.canUndo != true)
             Button("Redo") { session?.redo() }.keyboardShortcut("z", modifiers: [.command, .shift]).disabled(session?.canRedo != true)

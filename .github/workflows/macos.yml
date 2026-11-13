@@ -32,3 +32,5 @@ jobs:
           python3 -m venv .build/artwork-tests
           .build/artwork-tests/bin/python -m pip install --disable-pip-version-check vtracer==0.6.15 svgpathtools==1.8.0
           .build/artwork-tests/bin/python -m unittest discover -s Tests/Artwork -v
+      - name: Test release validation gates offline
+        run: .build/artwork-tests/bin/python -m unittest discover -s Tests/Release -v
