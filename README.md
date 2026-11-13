@@ -4,7 +4,7 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.7.1 fixes native save-dialog presentation and speeds up navigation in dense illustrations. It includes visible project saving and a shared SVG/PDF/PNG export panel, including saving directly from the generated-artwork preview. It includes fine image-to-vector tracing, freehand Pencil, editable brushes, real groups and nested layers, and a signed-in Codex workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.7.2 reports actual image-generation failures, including safety rejections and usage limits. It also includes working native save dialogs and faster navigation in dense illustrations. It includes visible project saving and a shared SVG/PDF/PNG export panel, including saving directly from the generated-artwork preview. It includes fine image-to-vector tracing, freehand Pencil, editable brushes, real groups and nested layers, and a signed-in Codex workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
 
 ## Open the app
 
@@ -120,7 +120,7 @@ A live Codex App Server check generated a sample illustration through the existi
 
 Native UI checks completed: drawing an ellipse; undo and redo; converting to a path; dragging an anchor; drawing a curved open pen path; inserting text; saving and reopening a three-object project; copying and pasting a vector object; undoing the paste; and exporting SVG. The drawing and exported SVG are in `QA/`.
 
-The current native suite has 62 passing tests, including all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Four additional Python tests use the pinned tracer to check retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+The current native suite has 62 passing tests, including all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Fourteen additional Python tests cover image-generation responses, safety rejections, usage limits, interleaved protocol events, image data validation, retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
 
 Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
 
@@ -131,7 +131,7 @@ Groups/layers tests also cover native outline selection, nested selection/isolat
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.7.1 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
+Version 0.7.2 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
 
 ## Source map
 

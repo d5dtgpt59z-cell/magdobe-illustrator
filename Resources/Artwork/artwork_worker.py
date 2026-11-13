@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local Codex App Server → image → editable contours. JSONL progress on stdout."""
 import argparse, base64, json, os, queue, re, shutil, signal, subprocess, sys, threading, time, uuid
+from collections import deque
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -38,18 +39,21 @@ class Codex:
     def __init__(self, executable):
         global server
         server = subprocess.Popen([executable, 'app-server', '--stdio', '--disable', 'shell_tool', '--disable', 'apps'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
-        self.proc=server; self.q=queue.Queue(); self.counter=0
+        self.proc=server; self.q=queue.Queue(); self.pending=deque(); self.counter=0
         def read():
             for line in self.proc.stdout:
                 try: self.q.put(json.loads(line))
                 except ValueError: pass
             self.q.put(None)
         threading.Thread(target=read,daemon=True).start()
-        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.7.1'},'capabilities':{'experimentalApi':True}})
+        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.7.2'},'capabilities':{'experimentalApi':True}})
         self.send({'method':'initialized','params':{}})
     def send(self, message):
         self.proc.stdin.write(json.dumps(message)+'\n'); self.proc.stdin.flush()
     def receive(self, timeout=60):
+        if self.pending: return self.pending.popleft()
+        return self._receive(timeout)
+    def _receive(self, timeout=60):
         try: message=self.q.get(timeout=timeout)
         except queue.Empty: raise RuntimeError('Codex did not respond in time. Check your connection and try again.')
         if message is None: raise RuntimeError('The Codex connection closed unexpectedly.')
@@ -62,8 +66,10 @@ class Codex:
         self.send({'id':request,'method':method,'params':params})
         deadline=time.monotonic()+90
         while time.monotonic()<deadline:
-            msg=self.receive()
-            if msg.get('id')!=request: continue
+            msg=self._receive(timeout=max(0.01, deadline-time.monotonic()))
+            if msg.get('id')!=request:
+                if 'method' in msg: self.pending.append(msg)
+                continue
             if 'error' in msg: raise RuntimeError('Codex: '+msg['error'].get('message','Request failed'))
             return msg.get('result',{})
         raise RuntimeError('Codex connection timed out.')
@@ -76,7 +82,7 @@ class Codex:
         self.check()
         instructions=('You are the image-generation component of Magdobe Illustrator. Use the built-in image generation tool to create exactly one image from the user brief. '
                       'Do not use shell commands, external APIs, other apps, subagents or code to draw it. Do not ask follow-up questions. '
-                      'Use the attached image as a visual reference if present. Finish immediately after successful image generation. If image generation is unavailable, say so clearly.')
+                      'Use the attached image as a visual reference if present. Finish immediately after successful image generation. If the image tool fails, do not retry; report its exact error. If image generation is unavailable, say so clearly.')
         thread=self.call('thread/start', {'cwd':str(job),'sandbox':'workspace-write','approvalPolicy':'never','ephemeral':True,'baseInstructions':instructions,'developerInstructions':instructions})
         thread_id=thread['thread']['id']
         brief=request['prompt']
@@ -85,29 +91,87 @@ class Codex:
         brief+=' Keep the full subject inside the frame. No watermarks or extra labels unless requested. The image will be converted into editable vector color contours.'
         inputs=[{'type':'text','text':brief}]
         if request.get('reference'): inputs.append({'type':'localImage','path':request['reference']})
-        self.call('turn/start',{'threadId':thread_id,'input':inputs})
+        turn=self.call('turn/start',{'threadId':thread_id,'input':inputs})
+        turn_id=turn.get('turn',{}).get('id')
         emit('generating',message='Codex is drawing your artwork…')
-        result=None; failure=None; deadline=time.monotonic()+900
+        result=None; failure=None; explanation=None; deadline=time.monotonic()+900
+        diagnostics={'threadId':thread_id,'turnId':turn_id,'imageStatus':None}
+        def record():
+            (job/'generation-info.json').write_text(json.dumps(diagnostics,indent=2))
+        record()
         while time.monotonic()<deadline:
-            msg=self.receive(timeout=120)
+            msg=self.receive(timeout=max(0.01,deadline-time.monotonic()))
             method=msg.get('method'); params=msg.get('params',{})
+            if params.get('threadId',thread_id)!=thread_id: continue
+            event_turn=params.get('turnId') or params.get('turn',{}).get('id')
+            if turn_id and event_turn and event_turn!=turn_id: continue
+            if method=='item/started' and params.get('item',{}).get('type')=='imageGeneration':
+                emit('generating',message='Codex is generating your image…')
             if method=='item/completed':
                 item=params.get('item',{})
+                if item.get('type')=='agentMessage' and item.get('text','').strip():
+                    explanation=item['text'].strip()[:1200]
+                    diagnostics['codexMessage']=explanation
                 if item.get('type')=='imageGeneration':
-                    if item.get('failure'): failure='Codex image generation reached a usage limit or failed. Check Codex and retry later.'
-                    elif item.get('savedPath') and Path(item['savedPath']).is_file():
-                        result=job/'source.png'; shutil.copyfile(item['savedPath'],result)
-                    elif item.get('result'):
-                        encoded=item['result'].split(',',1)[-1]
-                        try:
-                            raw=base64.b64decode(encoded,validate=True)
-                            if len(raw)>100: result=job/'source.png';result.write_bytes(raw)
-                        except ValueError: pass
+                    diagnostics['imageStatus']=item.get('status')
+                    if item.get('failure'):
+                        diagnostics['failure']=item['failure']
+                        if item['failure'].get('type')=='usageLimitExceeded':
+                            failure='Codex image-generation usage limit reached. Try again after the image limit resets.'
+                        else: failure='The Codex image tool failed: '+str(item['failure'].get('message') or item['failure'].get('type') or 'unknown error')
+                    elif item.get('status') in ('failed','cancelled'):
+                        failure='The Codex image tool failed to generate this request. Try again later or change the prompt.'
+                    else:
+                        try: result=save_generated_image(item,job) or result
+                        except (OSError,ValueError) as error: failure=str(error)
+                record()
             if method=='turn/completed':
+                turn=params.get('turn',{}); diagnostics['turnStatus']=turn.get('status')
+                if turn.get('error'): diagnostics['turnError']=turn['error']
+                record()
+                if turn.get('status')=='failed':
+                    raise RuntimeError('Codex: '+str((turn.get('error') or {}).get('message') or explanation or 'The image request failed.'))
+                if turn.get('status')=='interrupted': raise RuntimeError('The Codex image request was cancelled.')
                 if result: return result
-                status=params.get('turn',{}).get('status')
-                raise RuntimeError(failure or 'Codex finished without an image. Image generation may be unavailable for this account or runtime. Open Codex and check the image tool.')
+                if failure and 'usage limit' in failure: raise RuntimeError(failure)
+                if explanation: raise RuntimeError(generation_error_message(explanation))
+                raise RuntimeError(failure or 'Codex returned no generated image. Retry, or use Vectorize an Existing Image. Your prompt and existing artwork are unchanged.')
         raise RuntimeError('Image generation timed out. Check Codex before retrying; the image may have completed there.')
+
+
+def generation_error_message(explanation):
+    if 'moderation_blocked' in explanation or 'rejected by the safety system' in explanation.lower():
+        message='Codex’s image safety system rejected this request. Try a different prompt. Your prompt and existing artwork are unchanged.'
+        request_id=re.search(r'request ID\s+([a-zA-Z0-9-]+)',explanation,re.IGNORECASE)
+        if request_id: message+=' If this seems incorrect, contact OpenAI support with request ID '+request_id.group(1)+'.'
+        return message
+    return 'Codex: '+explanation
+
+
+def save_generated_image(item,job):
+    """Accept only an actual PNG from the requested generation item, never a reference image."""
+    target=job/'source.png'
+    saved=item.get('savedPath')
+    if saved:
+        source=Path(saved)
+        if not source.is_absolute(): source=job/source
+        if source.is_file():
+            with source.open('rb') as stream: header=stream.read(24)
+            if not header.startswith(b'\x89PNG\r\n\x1a\n') or len(header)<24:
+                raise ValueError('Codex returned an unsupported image file. A PNG image is required for vector conversion.')
+            if source.resolve()!=target.resolve(): shutil.copyfile(source,target)
+            return target
+    encoded=item.get('result')
+    if encoded:
+        if not isinstance(encoded,str): raise ValueError('Codex returned an unsupported image payload. Update Codex and retry.')
+        try: raw=base64.b64decode(encoded.split(',',1)[-1],validate=True)
+        except ValueError: raise ValueError('Codex returned invalid image data. Please retry.')
+        if not raw.startswith(b'\x89PNG\r\n\x1a\n') or len(raw)<24:
+            raise ValueError('Codex returned invalid PNG image data. Please retry.')
+        target.write_bytes(raw); return target
+    if item.get('fileId'):
+        raise ValueError('Codex returned an image file reference without a local file or image data. This Codex output format cannot be imported yet. Use Vectorize an Existing Image, or update Codex and retry.')
+    return None
 
 def trace(source, job, detail):
     import vtracer

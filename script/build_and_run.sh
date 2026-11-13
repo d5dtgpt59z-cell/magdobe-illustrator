@@ -40,7 +40,7 @@ cat > "$APP_CONTENTS/Info.plist" <<PLIST
 <key>CFBundleName</key><string>Magdobe Illustrator</string>
 <key>CFBundleDisplayName</key><string>Magdobe Illustrator</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.7.1</string>
+<key>CFBundleShortVersionString</key><string>0.7.2</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>

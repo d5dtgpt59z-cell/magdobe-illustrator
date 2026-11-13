@@ -2,6 +2,14 @@
 
 Version 0.6 makes **Detailed** the default and adds an opt-in **Ultra** preset. Detail is controlled during tracing, before SVG export. The SVG exporter preserves the paths it receives; exporting a previously simplified document cannot restore missing shapes.
 
+## Image-generation errors
+
+Version 0.7.2 preserves Codex’s explanation instead of assuming that image generation is unavailable for the account. It distinguishes safety-system rejections, native image usage limits, failed turns, invalid image payloads, and unsupported file-reference-only results. A safety rejection is not evidence of a licensing restriction; the provider may not give a specific cause. Check Connection verifies ChatGPT sign-in, not a guarantee that a particular prompt will generate.
+
+The worker keeps notifications that arrive before their RPC response, filters events to the requested thread and turn, accepts absolute or job-relative PNG paths and inline PNG data, and waits up to the existing 15-minute generation limit without aborting a quiet image tool at two minutes. Instructions ask Codex to report a failed tool call without automatically retrying it. Each job retains a local `generation-info.json` with status and error details; it contains no authentication tokens. These diagnostics stay on the user’s Mac.
+
+Validation exercised the signed-in app-server with successful image generation and a separate provider safety rejection. Offline protocol tests cover both outcomes and related failure cases without making live image requests. These checks do not establish why a provider safety system rejected a particular image.
+
 ## Rebuild an existing image
 
 1. Open **Draw with Codex** (Shift-Command-G).
