@@ -25,6 +25,7 @@ chmod +x "$APP_BINARY.next"
 mv -f "$APP_BINARY.next" "$APP_BINARY"
 mkdir -p "$APP_CONTENTS/Resources/Artwork"
 cp "$ROOT_DIR/Resources/Artwork/artwork_worker.py" "$APP_CONTENTS/Resources/Artwork/"
+cp "$ROOT_DIR/Resources/Artwork/provider_api.py" "$APP_CONTENTS/Resources/Artwork/"
 cp "$ROOT_DIR/Resources/AppIcon/Magdobe.icns" "$APP_CONTENTS/Resources/"
 python3 - "$APP_CONTENTS/Resources/runtime.json" <<'PYCONFIG'
 import json,os,shutil,sys
@@ -40,7 +41,7 @@ cat > "$APP_CONTENTS/Info.plist" <<PLIST
 <key>CFBundleName</key><string>Magdobe Illustrator</string>
 <key>CFBundleDisplayName</key><string>Magdobe Illustrator</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.7.2</string>
+<key>CFBundleShortVersionString</key><string>0.8.0</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>

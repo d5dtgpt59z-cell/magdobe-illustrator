@@ -46,7 +46,7 @@ class Codex:
                 except ValueError: pass
             self.q.put(None)
         threading.Thread(target=read,daemon=True).start()
-        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.7.2'},'capabilities':{'experimentalApi':True}})
+        self.call('initialize', {'clientInfo':{'name':'magdobe_illustrator','title':'Magdobe Illustrator','version':'0.8.0'},'capabilities':{'experimentalApi':True}})
         self.send({'method':'initialized','params':{}})
     def send(self, message):
         self.proc.stdin.write(json.dumps(message)+'\n'); self.proc.stdin.flush()
@@ -217,14 +217,58 @@ def trace(source, job, detail):
     (job/'trace-info.json').write_text(json.dumps(dict(detail=detail,settings=options,objects=len(shapes),anchors=nodes,width=project['width'],height=project['height']),indent=2))
     emit('done',project=str(target),image=str(source),objects=len(shapes),anchors=nodes,message=f'{len(shapes):,} editable objects ready')
 
+def claude_cli(prompt=None,job=None,model=''):
+    global server
+    executable=shutil.which('claude')
+    if not executable: raise RuntimeError('Claude Code is not installed. Install it and run claude auth login, then check the connection again.')
+    if prompt is None:
+        args=[executable,'auth','status']; supplied=None
+    else:
+        args=[executable,'-p','--output-format','json','--tools','','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--no-session-persistence','--setting-sources','','--system-prompt','Refine the user’s artwork brief into a clear image-generation prompt. Preserve the requested subjects, intent, and exact text. Do not add subjects or change the concept. Return only the improved prompt. Use no tools.']
+        if model: args+=['--model',model]
+        supplied=prompt
+    server=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,cwd=str(job) if job else None)
+    try: output,errors=server.communicate(input=supplied,timeout=180 if prompt else 25)
+    except subprocess.TimeoutExpired:
+        stop(); raise RuntimeError('Claude Code did not respond in time. Check its sign-in and try again.')
+    if server.returncode!=0:
+        raise RuntimeError('Claude Code could not complete this request. Check its sign-in with claude auth status and try again.')
+    if prompt is None: return 'Connected to Claude Code · existing sign-in'
+    try: response=json.loads(output)
+    except ValueError: raise RuntimeError('Claude Code returned an unreadable response. Update Claude Code and retry.')
+    if response.get('is_error'): raise RuntimeError('Claude Code: '+str(response.get('result') or 'The prompt request failed.')[:800])
+    result=response.get('result','').strip()
+    if not result: raise RuntimeError('Claude Code returned no prompt suggestion.')
+    return result[:16000]
+
 def main():
-    p=argparse.ArgumentParser();p.add_argument('mode',choices=['check','generate','trace']);p.add_argument('--codex');p.add_argument('--request');p.add_argument('--job');args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('mode',choices=['check','generate','trace','improve']);p.add_argument('--codex');p.add_argument('--request');p.add_argument('--job');args=p.parse_args()
+    config=json.loads(os.environ.get('MAGDOBE_PROVIDER_CONFIG','{"provider":"codex"}'))
+    provider=config.get('provider','codex');api_key=os.environ.pop('MAGDOBE_PROVIDER_API_KEY','')
     if args.mode=='check':
-        Codex(args.codex).check();emit('connected',message='Connected to Codex · signed in with ChatGPT');return
+        if provider=='codex': Codex(args.codex).check();message='Connected to Codex · signed in with ChatGPT'
+        elif provider=='claudeCLI': message=claude_cli()
+        else:
+            from provider_api import check_connection
+            message=check_connection(provider,api_key,config.get('model',''),config.get('baseURL',''))
+        emit('connected',message=message);return
     job=Path(args.job).resolve();job.mkdir(parents=True,exist_ok=True)
     request=json.loads(Path(args.request).read_text())
+    if args.mode=='improve':
+        if provider=='claudeCLI': suggestion=claude_cli(request['prompt'],job,config.get('model',''))
+        elif provider=='anthropic':
+            from provider_api import improve_prompt
+            suggestion=improve_prompt(provider,request['prompt'],api_key,config.get('model',''),config.get('baseURL',''))
+        else: raise RuntimeError('Choose Claude API or Claude Code as the prompt assistant in Settings.')
+        (job/'prompt-suggestion.txt').write_text(suggestion)
+        emit('done',message='Prompt suggestion ready');return
     if args.mode=='generate':
-        emit('connecting',message='Connecting to Codex…');source=Codex(args.codex).generate(job,request);stop()
+        emit('connecting',message='Connecting to your image provider…')
+        if provider=='codex': source=Codex(args.codex).generate(job,request);stop()
+        else:
+            from provider_api import generate_image
+            prompt=request['prompt']+'\nStyle: '+request.get('style','Illustration')+'. Preserve the full subject in frame. Rich detail and shading; suitable for editable vector conversion.'
+            source=generate_image(provider,prompt,job,api_key,config.get('model',''),config.get('baseURL',''),reference=Path(request['reference']) if request.get('reference') else None,format=request.get('format','square'))
     else:
         source=job/'source.png';shutil.copyfile(request['image'],source)
     trace(source,job,request.get('detail','Detailed'))

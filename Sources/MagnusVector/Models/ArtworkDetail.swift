@@ -15,7 +15,10 @@ enum ArtworkDetail: String, CaseIterable, Identifiable {
 
 enum ArtworkHistory {
     static var directory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        if let override = ProcessInfo.processInfo.environment["MAGDOBE_ARTWORK_DIRECTORY"], override.hasPrefix("/") {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Magdobe Illustrator/Artwork", isDirectory: true)
     }
     static func latestSource(in directory: URL) -> URL? {

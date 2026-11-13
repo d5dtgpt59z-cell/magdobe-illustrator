@@ -17,6 +17,7 @@ struct MagnusVectorApp: App {
         }
         .defaultSize(width: 1380, height: 900)
         .commands { EditorCommands() }
+        Settings { ProviderSettingsView() }
     }
 }
 
@@ -49,7 +50,7 @@ struct EditorCommands: Commands {
             .disabled(session == nil)
         }
         CommandMenu("Artwork") {
-            Button("Draw with Codex…") { session?.showGeneration = true }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(session == nil)
+            Button("Draw with AI…") { session?.showGeneration = true }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(session == nil)
             Divider()
             Button("Pencil") { session?.selectTool(.pencil) }.disabled(session == nil)
             Button("Brush") { session?.selectTool(.brush) }.disabled(session == nil)

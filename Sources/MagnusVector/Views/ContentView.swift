@@ -62,7 +62,7 @@ struct ContentView: View {
                 Label("Magdobe Illustrator", systemImage: "point.3.connected.trianglepath.dotted").font(.headline)
             }
             ToolbarItemGroup {
-                Button { session.showGeneration = true } label: { Label("Draw with Codex", systemImage: "sparkles") }.help("Describe artwork and generate editable vectors with Codex (⇧⌘G)")
+                Button { session.showGeneration = true } label: { Label("Draw with AI", systemImage: "sparkles") }.help("Describe artwork and generate editable vectors with your selected provider (⇧⌘G)")
                 Divider()
                 Button { session.undo() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(!session.canUndo).help("Undo (⌘Z)")
                 Button { session.redo() } label: { Image(systemName: "arrow.uturn.forward") }.disabled(!session.canRedo).help("Redo (⇧⌘Z)")

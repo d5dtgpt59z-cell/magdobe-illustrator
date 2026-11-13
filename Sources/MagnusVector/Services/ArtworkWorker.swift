@@ -27,9 +27,10 @@ final class ArtworkWorker: @unchecked Sendable {
         if let process, process.isRunning { process.terminate() }
         lock.unlock()
     }
-    func run(mode: String, job: URL? = nil, event: @escaping @Sendable ([String: Any]) -> Void) async throws {
+    func run(mode: String, job: URL? = nil, connection: ProviderConnection? = nil, event: @escaping @Sendable ([String: Any]) -> Void) async throws {
         let runtime = try ArtworkRuntime.load()
-        guard mode == "trace" || FileManager.default.isExecutableFile(atPath: runtime.codex) else {
+        let requiresCodex = mode != "trace" && (connection?.id ?? "codex") == "codex"
+        guard !requiresCodex || FileManager.default.isExecutableFile(atPath: runtime.codex) else {
             throw ArtworkError.message("Codex is unavailable. Install and sign in to Codex, then rebuild the app to reconnect it.")
         }
         guard let script = Bundle.main.url(forResource: "artwork_worker", withExtension: "py", subdirectory: "Artwork") else { throw ArtworkError.message("The artwork worker is missing from the app.") }
@@ -43,7 +44,14 @@ final class ArtworkWorker: @unchecked Sendable {
                     p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
                     var environment = ProcessInfo.processInfo.environment
                     environment["PYTHONUNBUFFERED"] = "1"
-                    environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+                    environment["PATH"] = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin").path + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+                    environment.removeValue(forKey: "MAGDOBE_PROVIDER_API_KEY")
+                    environment.removeValue(forKey: "MAGDOBE_PROVIDER_CONFIG")
+                    if let connection {
+                        let config = try? JSONSerialization.data(withJSONObject: connection.workerConfiguration)
+                        environment["MAGDOBE_PROVIDER_CONFIG"] = config.map { String(decoding: $0, as: UTF8.self) }
+                        if let key = connection.apiKey { environment["MAGDOBE_PROVIDER_API_KEY"] = key }
+                    }
                     p.environment = environment
                     self.lock.lock()
                     if self.cancelled { self.lock.unlock(); continuation.resume(throwing: CancellationError()); return }
@@ -65,7 +73,7 @@ final class ArtworkWorker: @unchecked Sendable {
                     p.waitUntilExit()
                     self.lock.lock(); let wasCancelled = self.cancelled; self.process = nil; self.lock.unlock()
                     if wasCancelled { continuation.resume(throwing: CancellationError()) }
-                    else if p.terminationStatus != 0 { continuation.resume(throwing: ArtworkError.message(reportedError ?? "The artwork process stopped. Try again or check the Codex connection.")) }
+                    else if p.terminationStatus != 0 { continuation.resume(throwing: ArtworkError.message(reportedError ?? "The artwork process stopped. Try again or check the provider connection.")) }
                     else { continuation.resume() }
                 }
             }

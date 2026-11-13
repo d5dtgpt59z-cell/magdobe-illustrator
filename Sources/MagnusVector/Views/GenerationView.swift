@@ -3,28 +3,41 @@ import SwiftUI
 struct GenerationView: View {
     @ObservedObject var session: EditorSession
     @StateObject private var generation = GenerationStore()
+    @ObservedObject private var providers = ProviderSettings.shared
+    @Environment(\.openSettings) private var openSettings
     @State private var saveFormat: ArtworkFileFormat?
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Label("Draw with Codex", systemImage: "sparkles").font(.title2.bold())
+                    Label("Draw with AI", systemImage: "sparkles").font(.title2.bold())
                     Text("Your idea → an image → editable artwork").foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("Providers…") { openSettings() }.help("Connect your own image provider and optional Claude prompt assistant")
                 Button("Done") { dismiss() }.disabled(generation.busy).help("Return to the canvas")
             }.padding(24)
             Divider()
             HStack(alignment: .top, spacing: 24) {
                 ScrollView { VStack(alignment: .leading, spacing: 14) {
+                    Picker("Image provider", selection: $providers.imageProvider) {
+                        ForEach(ImageProviderID.allCases) { Text($0.title).tag($0) }
+                    }.help("Generate with your selected service; configure it in Providers")
                     Text("What would you like to draw?").font(.headline)
                     TextEditor(text: $generation.prompt).font(.body).scrollContentBackground(.hidden)
                         .padding(8).frame(height: 128).background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.brown.opacity(0.18)))
                         .help("Describe the subject, pose, colors, style, and any exact text you want")
                     HStack {
-                        picker("Style", selection: $generation.style, values: ["Illustration", "Clean vector", "Painted detail"], help: "Choose the visual style for Codex to draw")
+                        Button("Improve Prompt") { Task { await generation.improvePrompt() } }
+                            .disabled(providers.assistant == .none || generation.suggesting || generation.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .help("Ask your Claude prompt assistant for a suggestion, then review it before using it")
+                        if generation.suggesting { ProgressView().controlSize(.small) }
+                        Spacer()
+                    }
+                    HStack {
+                        picker("Style", selection: $generation.style, values: ["Illustration", "Clean vector", "Painted detail"], help: "Choose the visual style for the image provider to draw")
                         picker("Format", selection: $generation.format, values: ["Square", "Portrait", "Landscape"], help: "Choose the composition of the generated image")
                     }
                     VStack(alignment: .leading, spacing: 5) {
@@ -37,10 +50,10 @@ struct GenerationView: View {
                     if generation.savedSource != nil {
                         Button(generation.project == nil ? "Rebuild Last Image" : "Rebuild These Vectors") { generation.rebuildVectors() }
                             .help("Re-trace the saved source at the selected detail. Uses no new image generation and leaves existing canvas artwork unchanged.")
-                        Text("Rebuild uses the saved source image. No new Codex image request.").font(.caption2).foregroundStyle(.secondary)
+                        Text("Rebuild uses the saved source image. No new image request.").font(.caption2).foregroundStyle(.secondary)
                     }
                     HStack {
-                        Button { generation.chooseReference() } label: { Label(generation.reference == nil ? "Add Reference…" : "Change Reference…", systemImage: "photo") }.help("Choose an image for Codex to use as a visual reference")
+                        Button { generation.chooseReference() } label: { Label(generation.reference == nil ? "Add Reference…" : "Change Reference…", systemImage: "photo") }.help("Choose an image for the image provider to use as a visual reference")
                         if generation.reference != nil {
                             Button { generation.reference = nil } label: { Image(systemName: "xmark.circle") }.help("Remove the visual reference")
                         }
@@ -51,13 +64,13 @@ struct GenerationView: View {
                         Image(systemName: generation.connected ? "checkmark.circle.fill" : "circle.dotted").foregroundStyle(generation.connected ? .green : .secondary)
                         Text(generation.connection).font(.caption).fixedSize(horizontal: false, vertical: true)
                     }
-                    Button("Check Connection") { Task { await generation.checkConnection() } }.font(.caption).help("Check your existing Codex ChatGPT sign-in")
-                    Text("Uses your signed-in Codex account and its image limits. Vector conversion runs on this Mac.").font(.caption).foregroundStyle(.secondary)
+                    Button("Check Connection") { Task { await generation.checkConnection() } }.font(.caption).help("Check your selected provider connection")
+                    Text("Uses your selected provider’s account and limits. Vector conversion runs on this Mac.").font(.caption).foregroundStyle(.secondary)
                     Button { generation.start() } label: { Label("Generate Editable Artwork", systemImage: "sparkles").frame(maxWidth: .infinity) }
                         .buttonStyle(.borderedProminent).controlSize(.large)
-                        .disabled(!generation.connected || generation.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || generation.busy)
-                        .help("Ask Codex to draw one image, then turn it into editable vector shapes")
-                    Button("Vectorize an Existing Image…") { generation.chooseImage() }.disabled(generation.busy).help("Convert a PNG, JPEG, or WebP locally without calling Codex")
+                        .disabled(!generation.connected || generation.suggesting || generation.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || generation.busy)
+                        .help("Ask the selected provider to draw one image, then turn it into editable vector shapes")
+                    Button("Vectorize an Existing Image…") { generation.chooseImage() }.disabled(generation.busy).help("Convert a PNG, JPEG, or WebP locally without an AI provider")
                 }.frame(maxWidth: .infinity, alignment: .leading) }.frame(width: 350).disabled(generation.busy)
                 VStack(spacing: 12) {
                     if generation.project != nil {
@@ -82,7 +95,7 @@ struct GenerationView: View {
                         Text("Preview: \(detail.rawValue) · \(project.shapes.count.formatted()) objects. Adding creates new artwork; existing canvas objects stay unchanged.")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
-                    if let error = generation.error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
+                    if let error = generation.error { ScrollView { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 90) }
                     if generation.project != nil {
                         HStack {
                             Button("Show Source Files") { generation.revealFiles() }.font(.caption)
@@ -117,7 +130,10 @@ struct GenerationView: View {
         .sheet(item: $saveFormat) { format in
             if let project = generation.project { ArtworkSaveView(project: project, initialFormat: format) }
         }
-        .task { await generation.checkConnection() }
+        .sheet(isPresented: Binding(get: { generation.promptSuggestion != nil }, set: { if !$0 { generation.promptSuggestion = nil } })) {
+            PromptSuggestionView(suggestion: generation.promptSuggestion ?? "") { prompt in generation.prompt = prompt; generation.promptSuggestion = nil }
+        }
+        .task(id: providers.revision) { await generation.checkConnection() }
         .onDisappear { generation.cancel() }
     }
     private func picker(_ label: String, selection: Binding<String>, values: [String], help: String) -> some View {

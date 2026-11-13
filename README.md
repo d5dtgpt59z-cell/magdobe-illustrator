@@ -4,13 +4,13 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.7.2 reports actual image-generation failures, including safety rejections and usage limits. It also includes working native save dialogs and faster navigation in dense illustrations. It includes visible project saving and a shared SVG/PDF/PNG export panel, including saving directly from the generated-artwork preview. It includes fine image-to-vector tracing, freehand Pencil, editable brushes, real groups and nested layers, and a signed-in Codex workflow. It uses original source code and no Adobe binaries or assets. Open source under the [MIT license](LICENSE).
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.8 lets you choose your image provider and an optional Claude prompt assistant, using your own API keys or supported CLI sign-ins. Generated images become editable vector objects in a workspace with real groups and layers, brushes, native project saving, and SVG/PDF/PNG export. Open source under the [MIT license](LICENSE). The application uses original source code and no Adobe binaries or assets.
 
 ## Open the app
 
 The built application is `dist/Magdobe Illustrator.app`. On launch, choose **New Document** or open an existing `.mvector` project.
 
-Requirements: macOS 14+, Xcode with a Swift 6 toolchain, and Python 3.9–3.14 with `venv`/`pip` (3.11 recommended). The first app build downloads the two pinned vector-conversion packages. Codex is optional for manual drawing and SVG export; generation requires an installed Codex CLI with an existing ChatGPT sign-in.
+Requirements: macOS 14+, Xcode with a Swift 6 toolchain, and Python 3.9–3.14 with `venv`/`pip` (3.11 recommended). The first app build downloads the two pinned vector-conversion packages. AI providers are optional for manual drawing, local image vectorization, and export. Choose Codex with an existing ChatGPT sign-in, or configure your own image API in **Settings → AI Providers**. Codex and Claude Code connections require their respective installed, signed-in CLIs; API connections do not require those CLIs.
 
 ```sh
 git clone https://github.com/d5dtgpt59z-cell/magdobe-illustrator.git
@@ -31,19 +31,23 @@ For a new runtime, set `MAGDOBE_PYTHON=python3.11` before building if the defaul
 
 On the canvas, click **Save Project** or press **Command-S** to save an editable `.mvector` document. The toolbar's **Export** menu and **File → Export** offer **SVG**, **PDF**, and **PNG** in the same panel.
 
-In **Draw with Codex**, a finished preview has its own **Save Project…** button and **Export** menu. Save the generated artwork directly without inserting it into the canvas. The preview panel offers **Editable Project / SVG / PDF / PNG** with an explanation of each format. Saving the preview does not save or replace the canvas document.
+In **Draw with AI**, a finished preview has its own **Save Project…** button and **Export** menu. Save the generated artwork directly without inserting it into the canvas. The preview panel offers **Editable Project / SVG / PDF / PNG** with an explanation of each format. Saving the preview does not save or replace the canvas document.
 
 Exports and preview project saves run in the background, write atomically, and show success or an actionable error. After saving, choose **Open in Magdobe**, **Open in Safari**, or **Open in Preview**, depending on the format, or **Show in Finder**. Existing SVG options are retained. Dense artwork now uses cached paths, a responsive navigation preview, and background viewport rendering; exports always retain the original vectors. See [save/export behavior and validation](docs/save-and-export.md).
 
-## Draw with Codex
+## Draw with AI
 
-Click **Draw with Codex** in the toolbar, or press **Shift-Command-G**. Describe your artwork, choose the image style, composition, and vector detail, then click **Generate Editable Artwork**. Compare **Editable vectors** with **Source image**, then **Add to Canvas**. Insertion is one undoable action; a blank document adopts the generated image size, while an existing document fits the new artwork inside its artboard.
+Click **Draw with AI** in the toolbar, or press **Shift-Command-G**. Describe your artwork, choose the image style, composition, and vector detail, then click **Generate Editable Artwork**. Compare **Editable vectors** with **Source image**, then **Add to Canvas**. Insertion is one undoable action; a blank document adopts the generated image size, while an existing document fits the new artwork inside its artboard.
 
-Generation uses the installed Codex CLI App Server and your existing ChatGPT sign-in. It does not require an API key. Codex must be installed and signed in, and image generation must be available for the account. The account's image generation limits apply. An optional reference image is sent with the prompt to Codex. **Check Connection** checks the existing login without exposing or copying credentials.
+Open **Providers…** in the drawing panel or **Magdobe Illustrator → Settings…** (**Command-Comma**) to choose a service. **Codex** is the default and uses the installed Codex CLI with your existing ChatGPT sign-in, without an API key. Other image options are **OpenAI**, **Google Gemini**, **OpenRouter**, and an **OpenAI-compatible** image API. Enter your provider's model, API base URL, and key, click **Save Connection**, then **Check Connection**. Authentication checks do not request a billed image; model access is checked when you generate.
 
-**Vectorize an Existing Image** converts a PNG, JPEG, or WebP locally. This does not require a Codex connection. Vectorization approximates shading with colored Bézier contours, simplifying fine texture and outlining text. **Detailed** is the default. **Ultra** preserves smaller accents and finer color transitions but can produce tens of thousands of objects and much larger files.
+An optional **Claude API** or **Claude Code** prompt assistant powers **Improve Prompt**. Review and edit its suggestion, then choose **Keep Original** or **Use This Prompt**. Claude refines the brief; your selected image provider generates the illustration.
 
-Choose a detail setting and **Rebuild Last Image** to retrace the last completed source without another Codex image request. With a preview open, the button becomes **Rebuild These Vectors**. Use **Save Project…** or **Export → SVG…** in the preview to save the vectors directly, or insert them with **Add to Canvas**. Existing canvas edits stay unchanged; rebuilding creates new artwork from the source image. Exporting an older, simplified document alone will not add detail. See [vector detail, measurements, and limits](docs/vector-detail.md).
+API keys are stored in macOS Keychain for the provider and full API endpoint, separately from projects and saved profiles. A ChatGPT or Claude subscription does not automatically include API credits. Prompts and reference images go to the image provider you select; Magdobe never switches to another provider automatically. See [provider setup, security, and validation](docs/ai-providers.md).
+
+**Vectorize an Existing Image** converts a PNG, JPEG, or WebP locally. This does not require an AI provider. Vectorization approximates shading with colored Bézier contours, simplifying fine texture and outlining text. **Detailed** is the default. **Ultra** preserves smaller accents and finer color transitions but can produce tens of thousands of objects and much larger files.
+
+Choose a detail setting and **Rebuild Last Image** to retrace the last completed source without another image request. With a preview open, the button becomes **Rebuild These Vectors**. Use **Save Project…** or **Export → SVG…** in the preview to save the vectors directly, or insert them with **Add to Canvas**. Existing canvas edits stay unchanged; rebuilding creates new artwork from the source image. Exporting an older, simplified document alone will not add detail. See [vector detail, measurements, and limits](docs/vector-detail.md).
 
 Source images, prompts, SVGs, vector previews, and native projects are retained in `~/Library/Application Support/Magdobe Illustrator/Artwork/`. Use **Show Source Files** to find a result. The Python runtime lives alongside that folder under `Runtime/`; the app bundle's `runtime.json` points to that runtime and the local Codex executable.
 
@@ -102,7 +106,8 @@ The canvas uses a white artboard as a viewing surface. Exports have no automatic
 | Convert to path | Shift-Command-O |
 | Fit / actual size | Command-0 / Command-1 |
 | Zoom | Pinch, or Option/Command-scroll |
-| Draw with Codex | Shift-Command-G |
+| Draw with AI | Shift-Command-G |
+| AI provider settings | Command-Comma |
 | Save / new / open | Standard macOS File menu shortcuts |
 
 Tool-letter shortcuts apply when the canvas has focus. Enter a numeric inspector value and press Return or leave the field to apply it.
@@ -120,7 +125,9 @@ A live Codex App Server check generated a sample illustration through the existi
 
 Native UI checks completed: drawing an ellipse; undo and redo; converting to a path; dragging an anchor; drawing a curved open pen path; inserting text; saving and reopening a three-object project; copying and pasting a vector object; undoing the paste; and exporting SVG. The drawing and exported SVG are in `QA/`.
 
-The current native suite has 62 passing tests, including all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Fourteen additional Python tests cover image-generation responses, safety rejections, usage limits, interleaved protocol events, image data validation, retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+The current native suite has 69 passing tests, including all four save/export formats, editable project round trips, atomic failure/cancellation, and save success/error state. Forty-three additional Python tests cover provider HTTP adapters and worker routing, transient credentials, restricted Claude CLI execution, image-generation responses, safety rejections, usage limits, interleaved protocol events, image data validation, retained image detail, source preservation, coordinate precision, and complexity errors; see [how to run them](docs/vector-detail.md#validation). Twelve brush tests cover native canvas mouse-down/drag/up, Escape/focus-loss cancellation, bounded long gestures, pressure and taper geometry, intersections/opacity, layer locks, one-step undo, save/open and editable SVG round trips.
+
+Provider UI validation completed a local fixture image API request through a temporary Keychain entry, producing 3,835 editable objects. A fixture Claude Messages response completed **Improve Prompt → Review Prompt → Use This Prompt**. Temporary test keys were removed. Keyed services were tested with offline and local fixtures, not live OpenAI/Gemini/OpenRouter/Anthropic credentials. The Claude Code CLI was not installed in the development environment, so its live sign-in and prompt-improvement flow remain unverified. The Codex connection was tested with both successful image generation and an actual provider safety rejection. See [the provider validation details](docs/ai-providers.md#validation).
 
 Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
 
@@ -131,7 +138,7 @@ Groups/layers tests also cover native outline selection, nested selection/isolat
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.7.2 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
+Version 0.8 does not import SVG/AI files or offer Illustrator feature parity. Distribution signing, notarization, and an installer have not been set up.
 
 ## Source map
 
