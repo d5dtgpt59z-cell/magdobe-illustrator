@@ -55,7 +55,7 @@ Exports and preview project saves run in the background, write atomically, and s
 
 ## Prepare artwork for production
 
-**File → Production Setup…** records your own printer's physical dimensions, bleed, safe inset, minimum text/stroke/raster limits and specification reference. Save reusable local printer profiles. An optional assistant uses your selected provider or supported Codex/Claude account connection to propose settings from the supplied instructions. Every proposal requires review; missing tolerances stay unknown. Fit or crop a separate delivery copy without stretching or rewriting the source geometry.
+**File → Production Export / Check…** records your own printer's physical dimensions, bleed, safe inset, minimum text/stroke/raster limits and specification reference. Save reusable local printer profiles. An optional assistant uses your selected provider or supported Codex/Claude account connection to propose settings from the supplied instructions. Every proposal requires review; missing tolerances stay unknown. Fit or crop a separate delivery copy without stretching or rewriting the source geometry.
 
 **Export Production SVG…** preserves editable paths, IDs, groups and roles at explicit millimetre dimensions. **Check Locally** runs the bundled PressCheck engine and opens its source-preserving report. **File → Open Production Workspace…** opens a token-protected loopback console with card preflight and a parametric straight-tuck carton study. Download its cut, crease, glue and reference layers as a native editable `.mvector` project or SVG.
 

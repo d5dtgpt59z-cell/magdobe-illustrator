@@ -1,6 +1,6 @@
 # Production setup and local checks
 
-Use **File → Production Setup…**, **File → Export → Production PDF / PDF/X…**, or the toolbar’s production export entry. Existing SVG, PDF, PNG and editable-project save commands retain their behavior.
+Use **File → Production Export / Check…**, **File → Export → Production PDF / PDF/X…**, or the toolbar’s production export entry. Existing SVG, PDF, PNG and editable-project save commands retain their behavior.
 
 Production Setup records a separate job specification in the `.mvector` document. Enter the printer's actual trim dimensions, bleed, safe inset, color requirement and any specified minimum text size, stroke width or raster resolution. Dimensions can be displayed in inches or millimeters; millimeters are stored. The initial values are an unconfirmed example, not a supplier-approved template. Custom named profiles, printer notes and specification references can be saved locally and reused. Loading a profile or changing confirmed requirements clears supplier confirmation.
 
