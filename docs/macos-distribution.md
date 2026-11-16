@@ -69,6 +69,48 @@ python3 script/release.py verify \
 
 The command uploads a ZIP of the already signed app through `notarytool`, waits for an **Accepted** result, records the service receipt/log beside the release app, staples the ticket to the app, and validates the stapled ticket and Gatekeeper assessment. Review the notary log even when Apple accepts a submission. A pending, invalid, rejected, or failed submission is not a notarized release. See Apple's [Customizing the notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
 
+## Optional app notarization through an existing Xcode account
+
+Xcode Organizer can use the release owner's signed-in Apple Developer account to submit a genuine macOS application archive. This is an alternative for the **app** submission; it does not configure `notarytool` credentials or relax the final DMG requirements below. Apple requires current account agreements and a macOS application target: an Aggregate/External Build System target or Generic Xcode Archive is not a substitute. See [Upload a macOS app to be notarized](https://help.apple.com/xcode/mac/current/en.lproj/dev88332a81e.html) and [Resolving common notarization issues](https://developer.apple.com/documentation/security/resolving-common-notarization-issues).
+
+Generate a local distribution project from a portable app that already passes `--mode signed`. Supply the exact same Developer ID Application identity used for that app, by name or SHA-1 fingerprint, and choose a new output directory:
+
+```sh
+python3 script/create_xcode_distribution.py \
+  --app "dist/release/Magdobe Illustrator.app" \
+  --identity "$MAGDOBE_SIGN_IDENTITY" \
+  --output ".build/xcode-distribution"
+```
+
+Generation performs read-only release validation and checks public certificate/identity metadata. It never builds, signs, selects a different certificate, reads private key material, accesses account credentials, or contacts Apple. It refuses existing output directories and an identity that differs from the input app's public leaf certificate. Generated files are local build inputs containing local paths; keep them out of the distributable app and public downloads.
+
+Run the exact archive command printed by the generator with full Xcode selected. For the example directory above:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild archive \
+  -project .build/xcode-distribution/MagdobeDistribution.xcodeproj \
+  -scheme MagdobeDistribution -configuration Release \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath .build/xcode-distribution/DerivedData \
+  -archivePath .build/xcode-distribution/MagdobeDistribution.xcarchive
+```
+
+This explicitly builds and signs a new application. The real app target compiles the current `Sources/MagnusVector` Swift files as `MagnusVector`, retains the input app's version/build/architecture/minimum OS, and copies only its already signed Helpers and Resources. It uses manual Developer ID signing, hardened runtime, secure timestamps, source-path remapping and release stripping. A hash guard rejects changed source files or a changed input app seal; regenerate into a new directory after intentional changes. The original app is not modified. Re-run `release.py verify --mode signed` and the frozen release tests against the archive's `Products/Applications/Magdobe Illustrator.app` before submitting this newly compiled candidate.
+
+Open the `.xcarchive` in Xcode Organizer, select the macOS app archive, and choose **Distribute App → Custom → Direct Distribution → Upload** (older Xcode versions may label the method **Developer ID**). Review the manual Developer ID identity and provisioning choices, then upload. Wait for Apple's accepted/ready result; upload completion alone is not notarization acceptance.
+
+Organizer can import a separate copy into its Archives folder. On the approved archive, choose **Show in Finder** and set `MAGDOBE_APPROVED_ARCHIVE` to that exact `.xcarchive` path. Export that approved copy, rather than an earlier failed or unsubmitted archive, into a new directory:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -exportNotarizedApp \
+  -archivePath "$MAGDOBE_APPROVED_ARCHIVE" \
+  -exportPath dist/xcode-notarized
+python3 script/release.py verify \
+  --app "dist/xcode-notarized/Magdobe Illustrator.app" --mode ready --arch arm64
+```
+
+Use the architecture actually built when verifying; this workflow does not establish Intel or separate-Mac compatibility. Preserve the Apple receipt and run the final tests on the exported app. The strict `release.py package` command still requires an explicit Developer ID identity **and an existing `notarytool` profile**, because the final signed DMG is separately submitted, stapled and assessed. An app-only Organizer submission does not make an unsubmitted DMG a verified final download.
+
 ## Produce the final download
 
 Once the app passes `--mode ready`, build the final signed and notarized disk image:
