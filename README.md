@@ -8,7 +8,9 @@ A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core 
 
 ## Open the app
 
-**Download status:** a signed, notarized public download has not been published. The portable build described below produces an ad-hoc-signed local preview. Developer ID signing, notarization and distribution verification are separate steps.
+**[Download Magdobe Illustrator 0.10.0 for Apple Silicon (.dmg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/releases/download/v0.10.0/Magdobe-Illustrator-0.10.0-arm64.dmg)** · [Release notes](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/releases/tag/v0.10.0) · [SHA-256 checksum](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/releases/download/v0.10.0/Magdobe-Illustrator-0.10.0-arm64.dmg.sha256)
+
+Open the disk image, drag **Magdobe Illustrator** into **Applications**, then launch the installed app. Both the app and DMG are Developer ID-signed, Apple-notarized and stapled; Gatekeeper assessment passed. The installer is **arm64 only**, with a **macOS 14+ deployment target**, and was tested on **macOS 26.5.2**. A fresh quarantined installation on another Mac and actual macOS 14 runtime compatibility remain unverified; an Intel installer is not included. Apple distribution validation does not establish independent PDF/X certification, Adobe Illustrator compatibility or supplier approval.
 
 A packaged application requires macOS 14+ and a Mac matching the package's architecture. Its artwork helper and vector-conversion runtime travel inside the app: users do not need to install Python, Homebrew or Xcode. On launch, choose **New Document** or open an existing `.mvector` project.
 
@@ -43,7 +45,7 @@ Release builders need Xcode with Swift 6 and its command-line tools, plus Node/n
 
 This prepares `dist/release/Magdobe Illustrator.app` with bundled artwork and PressCheck workers, Python runtimes, vector-conversion dependencies, a static local production console, HTTPS certificate roots, source archives and third-party notices. The exact PressCheck revision is pinned in `script/presscheck-source.json`; a clean matching checkout can be supplied with `MAGDOBE_PRESSCHECK_SOURCE`. Build dependencies are pinned in `script/release-requirements.txt`, with standalone runtime/source checksums recorded in the release locks. Each build targets one architecture, `arm64` or `x86_64`, matching its Python runtime. Set `MAGDOBE_RELEASE_DIR` for a new versioned destination. The script keeps the development app separate and refuses to overwrite an existing release app. Recipients need none of these build tools.
 
-The result is an ad-hoc-signed preview for local validation. It has not completed Developer ID signing or Apple notarization and is not a verified public download. Follow [Mac distribution](docs/macos-distribution.md) for the explicit signing, notarization, stapling, verification and packaging steps using your own signing identity and notarytool Keychain profile. These steps do not publish anything automatically.
+These source-build commands produce an ad-hoc-signed preview for local validation, separately from the signed public installer linked above. Follow [Mac distribution](docs/macos-distribution.md) for the explicit signing, notarization, stapling, verification and packaging steps using your own signing identity and notarytool Keychain profile. These steps do not publish anything automatically.
 
 ## Save and export
 
@@ -178,7 +180,7 @@ Distribution checks cover release gating and actual relocated frozen workers, in
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, calibrated soft proofing, ink/separation controls, further print preparation, performance profiling and broader interoperability testing.
 
-Version 0.10.0 does not import SVG/AI files or offer Illustrator feature parity. Generated structural `.mvector` projects can be opened directly. Distribution tooling is included; a signed, notarized public download has not been released.
+Version 0.10.0 does not import SVG/AI files or offer Illustrator feature parity. Generated structural `.mvector` projects can be opened directly. The signed, notarized Apple Silicon installer is available in the [0.10.0 release](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/releases/tag/v0.10.0).
 
 ## Source map
 
@@ -191,6 +193,6 @@ Version 0.10.0 does not import SVG/AI files or offer Illustrator feature parity.
 
 ## Project status and assets
 
-This is an early native editor with development builds and a portable release-build workflow. Developer ID signing and notarization remain release steps before a verified public download. General SVG import is not included. The application source is available under the [MIT license](LICENSE). Clone it, try it, break it, improve it. Make something.
+This is an early native editor with a [signed, notarized Apple Silicon download](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/releases/tag/v0.10.0), development builds and a portable release-build workflow. General SVG import is not included. The application source is available under the [MIT license](LICENSE). Clone it, try it, break it, improve it. Make something.
 
 The icon and illustration regression fixtures were generated during development; they are examples, not official brand or character artwork. Third-party names, characters and trademarks remain the property of their respective owners; the software license does not grant rights to those properties.
