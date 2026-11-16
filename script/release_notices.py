@@ -10,11 +10,22 @@ import sysconfig
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGES = ("vtracer", "svgpathtools", "numpy", "scipy", "svgwrite", "certifi", "pyinstaller")
+PACKAGES = ("vtracer", "svgpathtools", "numpy", "scipy", "svgwrite", "certifi", "pyinstaller",
+            "defusedxml", "pydantic", "pydantic_core", "annotated_types", "typing_extensions", "typing_inspection", "Pillow", "PyMuPDF")
+# Canonical https://www.gnu.org/licenses/agpl-3.0.txt, verified 2026-11-16.
+AGPL_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
 
 
 def license_file(path):
     return path.name.lower().startswith(("license", "copying", "notice", "copyright")) and path.is_file()
+
+
+def renderer_agpl_license(checker):
+    """The wheel's short dual-license notice is not the full license text."""
+    source = checker / "PressCheck-LICENSE.txt"
+    if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != AGPL_SHA256:
+        raise RuntimeError("The pinned PressCheck helper must include the complete GNU AGPL-3.0 license text before packaging PyMuPDF")
+    return source
 
 
 def collect(output, binaries):
@@ -33,6 +44,10 @@ def collect(output, binaries):
         components.append({"name": name, "version": version, "notices": records})
 
     component("Magdobe Illustrator", (ROOT / "VERSION").read_text().strip(), [("Magdobe-LICENSE.txt", ROOT / "LICENSE")])
+    checker = output.parent.parent / "Helpers/PressCheckWorker.app/Contents/Resources"
+    if checker.is_dir():
+        revision = json.loads((checker / "source-revision.json").read_text())["revision"]
+        component("PressCheck standalone worker", revision, [("PressCheck-LICENSE.txt", checker / "PressCheck-LICENSE.txt")])
     python_license = Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"
     component("CPython", sys.version.split()[0], [("Python-LICENSE.txt", python_license)])
     upstream_notices = Path(sys.base_prefix).parent / "redistribution-notices"
@@ -47,6 +62,11 @@ def collect(output, binaries):
             source = Path(distribution.locate_file(entry))
             if license_file(source) and not Path(entry).is_absolute() and ".." not in Path(entry).parts:
                 notices.append((str(Path(name) / entry), source))
+        if name == "PyMuPDF":
+            # Retain the original vendor COPYING and add the complete license.
+            # Dependency versions/source provenance are recorded separately.
+            notices.append(("PyMuPDF/AGPL-3.0.txt", renderer_agpl_license(checker)))
+            notices.append(("PyMuPDF/README.txt", ROOT / "script/licenses/PyMuPDF-README.txt"))
         component(name, distribution.version, notices)
 
     # Include licenses for non-system libraries collected from a Homebrew formula.

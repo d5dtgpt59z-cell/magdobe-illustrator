@@ -151,6 +151,7 @@ struct VectorProject: Codable, Equatable {
     var height: Double = 800
     var shapes: [VectorShape] = []
     var hierarchy: [VectorNode]? = nil
+    var production: ProductionSpec? = nil
 
     func validated() throws -> VectorProject {
         guard version == 1 || version == 2 else { throw ValidationError.unsupportedVersion }
@@ -170,6 +171,7 @@ struct VectorProject: Codable, Equatable {
             } }
         }
         try validateHierarchy()
+        if let production { _ = try production.validated() }
         return self
     }
     enum ValidationError: LocalizedError {

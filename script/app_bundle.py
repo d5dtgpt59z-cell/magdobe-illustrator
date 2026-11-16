@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def stage(binary, output, runtime_python=None, build_number="3"):
+def stage(binary, output, runtime_python=None, build_number="4"):
     contents = output / "Contents"
     (contents / "MacOS").mkdir(parents=True, exist_ok=True)
     resources = contents / "Resources"
@@ -19,7 +19,7 @@ def stage(binary, output, runtime_python=None, build_number="3"):
     shutil.copy2(binary, temporary)
     temporary.chmod(0o755)
     temporary.replace(target)
-    for name in ("artwork_worker.py", "provider_api.py"):
+    for name in ("artwork_worker.py", "provider_api.py", "production_assistant.py"):
         shutil.copy2(ROOT / "Resources/Artwork" / name, resources / "Artwork" / name)
     shutil.copy2(ROOT / "Resources/AppIcon/Magdobe.icns", resources / "Magdobe.icns")
     runtime = resources / "runtime.json"
@@ -40,7 +40,7 @@ def stage(binary, output, runtime_python=None, build_number="3"):
         "NSPrincipalClass": "NSApplication",
         "CFBundleIconFile": "Magdobe",
         "NSHighResolutionCapable": True,
-        "NSHumanReadableCopyright": "Copyright © 2026 Built by Magnus. MIT-licensed source.",
+        "NSHumanReadableCopyright": "Copyright © 2026 Built by Magnus. Magdobe source MIT; separate PressCheck helper AGPL. See ThirdPartyNotices.",
         "UTExportedTypeDeclarations": [{
             "UTTypeIdentifier": "com.builtbymagnus.vector",
             "UTTypeDescription": "Magdobe Illustrator Project",
@@ -63,6 +63,6 @@ if __name__ == "__main__":
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runtime-python", type=Path)
-    parser.add_argument("--build-number", default="3")
+    parser.add_argument("--build-number", default="4")
     args = parser.parse_args()
     stage(args.binary, args.output, args.runtime_python, args.build_number)

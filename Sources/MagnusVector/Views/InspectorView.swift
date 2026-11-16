@@ -16,6 +16,11 @@ struct InspectorView: View {
                             Text("\(node.kind.rawValue.capitalized) · \(session.selectedShapes.count) objects").font(.caption).foregroundStyle(.secondary)
                         }
                         if let bounds = session.selectionBounds { transform(bounds) }
+                        Picker("Production role", selection: Binding<ProductionRole?>(get: { session.selectedNode?.productionRole }, set: { session.setProductionRole($0) })) {
+                            Text("Inherit / unspecified").tag(ProductionRole?.none)
+                            ForEach(ProductionRole.allCases) { Text($0.title).tag(Optional($0)) }
+                        }.font(.caption).disabled(!document.hierarchyIndex.canEdit(node.id))
+                            .help("Describe this object's production purpose. Roles are inherited by children; they do not create spot inks or manufacturing approval.")
                     } else {
                         Text(session.selection.isEmpty ? "Artboard" : "\(session.selection.count) selected").font(.headline)
                         if session.selection.isEmpty {

@@ -1,6 +1,6 @@
 # macOS download and distribution
 
-Magdobe has two separate builds. `script/build_and_run.sh` creates a developer app that uses the local tracing runtime. `script/build_release.sh` creates the self-contained application intended for packaging. Distribute the latter. The release app includes its own artwork worker, Python runtime, tracing dependencies, and license notices.
+Magdobe has two separate builds. `script/build_and_run.sh` creates a developer app that uses the local tracing runtime. `script/build_release.sh` creates the self-contained application intended for packaging. Distribute the latter. The release app includes artwork and PressCheck workers, their Python runtimes, tracing/checking dependencies, a static production console, exact worker/source archives and license notices. Installed users do not need Xcode, Python, Node or a separately started server.
 
 The current release target is macOS 14 or later. Build Apple Silicon and Intel artifacts separately on matching machines and Python runtimes; the verifier checks that every native dependency supports the advertised architecture. An Apple Silicon build is not an Intel or universal build.
 
@@ -8,7 +8,7 @@ The steps below prepare a local preview, then let the release owner sign and not
 
 ## Build a portable preview
 
-On the build Mac, install Xcode with its command-line tools and a Swift 6 toolchain. The default release build fetches a pinned, checksum-verified, relocatable Python 3.11 runtime from the official Astral `python-build-standalone` release, then downloads the packages pinned in `script/release-requirements.txt` and freezes the helper with PyInstaller. A separate global Python 3.11/Homebrew installation is not required. These build tools are needed by the developer, not by people installing the release app. See the checked-in Python release lock for the exact version, platform asset, and SHA-256.
+On the build Mac, install Xcode with its command-line tools and a Swift 6 toolchain, plus Node/npm for compiling the production console. This is a Swift Package Manager project; opening Xcode or creating an Xcode project is unnecessary. The default release build fetches a pinned, checksum-verified, relocatable Python 3.11 runtime from the official Astral `python-build-standalone` release, then downloads the packages pinned in `script/release-requirements.txt` and freezes the helper with PyInstaller. A separate global Python 3.11/Homebrew installation is not required. These build tools are needed by the developer, not by people installing the release app. See the checked-in Python release lock for the exact version, platform asset, and SHA-256.
 
 ```sh
 ./script/test.sh
@@ -21,14 +21,14 @@ python3 script/release.py verify \
 
 `MAGDOBE_RELEASE_ARCH` accepts `arm64` or `x86_64`; use the architecture of the build machine and bundled runtime. If you deliberately override the portable Python source through the build script, the dependency and minimum-OS verifier still applies: a Homebrew interpreter built for a newer macOS cannot be relabeled as supporting macOS 14. Set a new `MAGDOBE_BUILD_NUMBER` for each distributed build. Keep the existing prepared/signed app in a separate versioned folder before rebuilding; the release script refuses to overwrite it.
 
-The result is `dist/release/Magdobe Illustrator.app`. The helper lives at `Contents/Helpers/MagdobeArtworkWorker.app/Contents/MacOS/MagdobeArtworkWorker`. Runtime configuration must not contain the build machine's home directory, Python installation, or Codex installation. Codex and Claude Code remain optional external tools; the app discovers their installed, signed-in CLIs. API providers and local vectorization use the bundled worker.
+Set `MAGDOBE_RELEASE_DIR` to a new versioned output folder to preserve earlier candidates. The default result is `dist/release/Magdobe Illustrator.app`. PressCheck is pinned to the clean source revision in `script/presscheck-source.json`; the builder can clone it or use a matching clean `MAGDOBE_PRESSCHECK_SOURCE` checkout. Its executable is `Contents/Helpers/PressCheckWorker.app/Contents/MacOS/PressCheckWorker`; the prebuilt local UI, exact PressCheck source ZIP, PyMuPDF/MuPDF source archives and browser/runtime notices are in that helper’s `Contents/Resources`. The artwork helper lives at `Contents/Helpers/MagdobeArtworkWorker.app/Contents/MacOS/MagdobeArtworkWorker`. Runtime configuration must not contain the build machine's home directory, Python installation, or Codex installation. Codex and Claude Code remain optional external tools; the app discovers their installed, signed-in CLIs. API providers and local vectorization use the bundled worker.
 
 To make a clearly labeled local testing disk image without Apple signing or notarization:
 
 ```sh
 python3 script/release.py package \
   --app "dist/release/Magdobe Illustrator.app" \
-  --output "dist/Magdobe-0.8.1-arm64-PREVIEW.dmg" --preview
+  --output "dist/Magdobe-0.9.0-arm64-PREVIEW.dmg" --preview
 ```
 
 The preview image includes an Applications shortcut and a preview notice. It is not a trusted public installer; Gatekeeper can reject it. The `PREVIEW` filename is required. Preview mode does not sign with Developer ID, contact Apple, weaken Gatekeeper, or claim distribution readiness.
@@ -76,10 +76,10 @@ Once the app passes `--mode ready`, build the final signed and notarized disk im
 ```sh
 python3 script/release.py package \
   --app "dist/release/Magdobe Illustrator.app" \
-  --output "dist/Magdobe-0.8.1-arm64.dmg" \
+  --output "dist/Magdobe-0.9.0-arm64.dmg" \
   --identity "$MAGDOBE_SIGN_IDENTITY" \
   --profile "$MAGDOBE_NOTARY_PROFILE"
-(cd dist && shasum -a 256 -c "Magdobe-0.8.1-arm64.dmg.sha256")
+(cd dist && shasum -a 256 -c "Magdobe-0.9.0-arm64.dmg.sha256")
 ```
 
 The final packaging command validates the ready app, copies it with an Applications shortcut, creates a read-only compressed DMG, verifies and mounts that image for another bundle check, signs the DMG with Developer ID, notarizes/staples the DMG, and assesses the final container. The SHA-256 sidecar is written only after these steps. Existing DMGs/checksum files are never replaced. If a later stage fails, treat the output as incomplete and use a new output filename after resolving the reported failure.
@@ -87,24 +87,28 @@ The final packaging command validates the ready app, copies it with an Applicati
 The checksum line contains the DMG's filename. Run the checksum check from the DMG's folder, or use:
 
 ```sh
-(cd dist && shasum -a 256 -c "Magdobe-0.8.1-arm64.dmg.sha256")
+(cd dist && shasum -a 256 -c "Magdobe-0.9.0-arm64.dmg.sha256")
 ```
 
 Publishing is a separate action. Upload only the final verified DMG and its matching checksum to the intended GitHub release or download host, then test the actual public download. No script in this workflow uploads to GitHub or modifies the website.
 
-## Validated candidate
+## Version 0.9.0 candidate
 
-The local candidate is **Magdobe 0.8.1, build 3**, for **Apple Silicon (arm64)**. Portable-bundle verification covers 115 Mach-O code files, their deployment targets and dependencies, private-path scanning, notice inventory, and nested code-signature integrity. It remains an **ad-hoc preview**: Developer ID signing and Apple notarization were not run.
+The production-workflow candidate is **Magdobe 0.9.0, build 4**, for **Apple Silicon (arm64)**. Portable validation inspects **150 Mach-O files**, architecture/minimum-OS requirements, process-specific library paths, resources, source and notice inventories. Both helper applications are sealed before the outer app. Developer ID signing and Apple notarization are the release owner's remaining steps; this candidate is an ad-hoc preview.
 
-A QA clone of the actual bundled application completed a live Codex image request through the existing sign-in, converted the image into **8,783 editable objects**, and saved an editable project of approximately **34 MB**. The relocated-worker tests use a temporary home and a minimal system PATH with local image/TLS fixtures; this demonstrates independence from the developer’s Python environment on the development Mac. It does not establish behavior on another physical Mac, actual macOS 14, or a quarantined browser download.
+Validation comprises **105 native tests, 61 artwork/provider tests and 26 release tests**, including seven actual frozen-worker integrations on the development Mac. The new checker integrations run a 2,199-path fixture, safe preview rendering, authenticated static console/API access, structural/native project generation and profile persistence across server restarts. The frozen text assistant uses a local fixture provider. Workers run from relocated paths with a temporary home and a system-only PATH, without using external Python or Node. The separate PressCheck source passes its backend/frontend checks and existing CI/container workflows.
 
-Automated validation comprises **77 native tests, 47 artwork/provider Python tests, and 17 release tests**. The release suite includes 14 offline validator tests and three integration tests against the actual portable bundle. CI runs the offline validation gates; without a built portable app, the three bundle tests explicitly skip. CI never signs with Developer ID, submits to Apple, or publishes a binary.
+A native UI check loaded the real 2,199-object project, ran the bundled local checker and saved an editable production SVG with **2,199 unique paths**, no raster image elements and a **69.85 × 95.25 mm** bleed canvas. The production export panel uses asynchronous AppKit presentation so destination validation remains responsive inside the SwiftUI setup sheet. The checker preserves the exact source bytes and reports missing specifications and unsupported measurements explicitly.
+
+A small live Codex spec proposal converted a supplied 2.5 × 3.5-inch trim and 1/8-inch bleed/safety margins to 63.5 × 88.9 mm and 3.175 mm, retaining source quotations and leaving supplier confirmation false. Other text-provider transports use offline fixtures; live keyed-provider testing is not claimed.
+
+These checks do not establish behavior on another physical Mac, an actual macOS 14 installation, a quarantined browser download, Adobe Illustrator or a commercial press. CI never selects an Apple identity, submits to Apple or publishes a binary. Where no packaged candidate exists, the real frozen integration tests explicitly skip.
 
 ## Validation before publishing
 
 The automated verifier checks:
 
-- Required app metadata, executable permissions, embedded artwork worker, and license manifest.
+- Required app metadata, executable permissions, embedded artwork/PressCheck workers, static production page, source/license resources and license manifest.
 - Architecture consistency and minimum macOS versions across native code.
 - Library dependencies and search paths that resolve inside the app or to macOS system libraries.
 - Broken, absolute, or escaping bundle symlinks; developer-home paths in runtime/text metadata and the main Swift executable; the current builder’s home path in native dependencies; credential-shaped data; and accidental source requests or artwork.

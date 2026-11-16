@@ -4,7 +4,7 @@
 
 [![macOS tests](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml/badge.svg)](https://github.com/d5dtgpt59z-cell/magdobe-illustrator/actions/workflows/macos.yml)
 
-A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.8.1 adds a self-contained Mac release-build workflow. Choose your image provider and an optional Claude prompt assistant, using your own API keys or supported CLI sign-ins. Generated images become editable vector objects in a workspace with real groups and layers, brushes, native project saving, and SVG/PDF/PNG export. Open source under the [MIT license](LICENSE). The application uses original source code and no Adobe binaries or assets.
+A native macOS vector editor, built from scratch with SwiftUI, AppKit, and Core Graphics. Version 0.9.0 adds printer specifications, reviewable AI setup proposals, physically sized vector delivery and a bundled PressCheck production workspace. Choose your image provider and an optional Claude prompt assistant, using your own API keys or supported CLI sign-ins. Generated images become editable vector objects in a workspace with real groups and layers, brushes, native project saving, and SVG/PDF/PNG export. Magdobe source is open under the [MIT license](LICENSE); the separate [PressCheck worker](https://github.com/d5dtgpt59z-cell/presscheck) and its renderer are supplied under their AGPL terms, with source and notices in the release. The application uses original source code and no Adobe binaries or assets.
 
 ## Open the app
 
@@ -35,13 +35,13 @@ For a new runtime, set `MAGDOBE_PYTHON=python3.11` before building if the defaul
 
 ## Build a portable Mac app
 
-Release builders need Xcode with Swift 6 and its command-line tools. The build script downloads a pinned, checksum-verified standalone Python 3.11 runtime and prepares its build environment; a separate Homebrew or global Python 3.11 installation is not required. From the repository root:
+Release builders need Xcode with Swift 6 and its command-line tools, plus Node/npm to compile the bundled production console. The project builds with Swift Package Manager; no Xcode project or IDE session is needed. The build script downloads a pinned, checksum-verified standalone Python 3.11 runtime and prepares its build environment; a separate Homebrew or global Python 3.11 installation is not required. From the repository root:
 
 ```sh
 ./script/build_release.sh
 ```
 
-This prepares `dist/release/Magdobe Illustrator.app` with a bundled artwork helper, Python runtime, vector-conversion dependencies, HTTPS certificate roots and third-party notices. Build dependencies are pinned in `script/release-requirements.txt`, with the standalone runtime asset and checksum recorded in the Python release lock. Each build targets one architecture, `arm64` or `x86_64`, matching its Python runtime. The script keeps the development app separate and refuses to overwrite an existing release app.
+This prepares `dist/release/Magdobe Illustrator.app` with bundled artwork and PressCheck workers, Python runtimes, vector-conversion dependencies, a static local production console, HTTPS certificate roots, source archives and third-party notices. The exact PressCheck revision is pinned in `script/presscheck-source.json`; a clean matching checkout can be supplied with `MAGDOBE_PRESSCHECK_SOURCE`. Build dependencies are pinned in `script/release-requirements.txt`, with standalone runtime/source checksums recorded in the release locks. Each build targets one architecture, `arm64` or `x86_64`, matching its Python runtime. Set `MAGDOBE_RELEASE_DIR` for a new versioned destination. The script keeps the development app separate and refuses to overwrite an existing release app. Recipients need none of these build tools.
 
 The result is an ad-hoc-signed preview for local validation. It has not completed Developer ID signing or Apple notarization and is not a verified public download. Follow [Mac distribution](docs/macos-distribution.md) for the explicit signing, notarization, stapling, verification and packaging steps using your own signing identity and notarytool Keychain profile. These steps do not publish anything automatically.
 
@@ -52,6 +52,14 @@ On the canvas, click **Save Project** or press **Command-S** to save an editable
 In **Draw with AI**, a finished preview has its own **Save Project…** button and **Export** menu. Save the generated artwork directly without inserting it into the canvas. The preview panel offers **Editable Project / SVG / PDF / PNG** with an explanation of each format. Saving the preview does not save or replace the canvas document.
 
 Exports and preview project saves run in the background, write atomically, and show success or an actionable error. After saving, choose **Open in Magdobe**, **Open in Safari**, or **Open in Preview**, depending on the format, or **Show in Finder**. Existing SVG options are retained. Dense artwork now uses cached paths, a responsive navigation preview, and background viewport rendering; exports always retain the original vectors. See [save/export behavior and validation](docs/save-and-export.md).
+
+## Prepare artwork for production
+
+**File → Production Setup…** records your own printer's physical dimensions, bleed, safe inset, minimum text/stroke/raster limits and specification reference. Save reusable local printer profiles. An optional assistant uses your selected provider or supported Codex/Claude account connection to propose settings from the supplied instructions. Every proposal requires review; missing tolerances stay unknown. Fit or crop a separate delivery copy without stretching or rewriting the source geometry.
+
+**Export Production SVG…** preserves editable paths, IDs, groups and roles at explicit millimetre dimensions. **Check Locally** runs the bundled PressCheck engine and opens its source-preserving report. **File → Open Production Workspace…** opens a token-protected loopback console with card preflight and a parametric straight-tuck carton study. Download its cut, crease, glue and reference layers as a native editable `.mvector` project or SVG.
+
+This is a production foundation. SVG remains RGB; no ICC conversion, PDF/X certification, spot separation, tooling approval or physical fit certification is claimed. Supplier specifications and proofs remain necessary. See [production workflow, supported checks and limits](docs/production-workflow.md).
 
 ## Draw with AI
 
@@ -159,7 +167,7 @@ Provider UI validation completed a local fixture image API request through a tem
 
 Groups/layers tests also cover native outline selection, nested selection/isolation, group transforms, inherited visibility/locks, hierarchy validation, copy/paste, undo, and the actual 2,199-object illustration. The grouped illustration keeps every shape and renders identically to the flat original.
 
-Seventeen distribution checks cover release gating and an actual relocated frozen worker, including offline tracing, a fixture image API, and HTTPS certificate verification. These tests run on the development Mac and do not replace a quarantined installation test on another Mac. See [Mac distribution and signing](docs/macos-distribution.md).
+Twenty-six distribution checks cover release gating and actual relocated frozen workers, including offline tracing, fixture image/text APIs, HTTPS certificate verification, 2,199-object preflight, production console assets, structural handoff and saved-profile persistence. These tests run on the development Mac and do not replace a quarantined installation test on another Mac. See [Mac distribution and signing](docs/macos-distribution.md).
 
 ## Next development stages
 
@@ -168,7 +176,7 @@ Seventeen distribution checks cover release gating and an actual relocated froze
 3. Interchange: SVG import with a deliberately supported feature set, placed images, and font controls/text outlines.
 4. Professional documents: multiple artboards, color management/CMYK, print preparation, performance profiling, and broader interoperability testing.
 
-Version 0.8.1 does not import SVG/AI files or offer Illustrator feature parity. Distribution tooling is included; a signed, notarized public download has not been released.
+Version 0.9.0 does not import SVG/AI files or offer Illustrator feature parity. Generated structural `.mvector` projects can be opened directly. Distribution tooling is included; a signed, notarized public download has not been released.
 
 ## Source map
 

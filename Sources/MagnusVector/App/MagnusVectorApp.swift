@@ -52,8 +52,11 @@ struct EditorCommands: Commands {
                 .keyboardShortcut("s", modifiers: [.command, .shift]).disabled(session == nil)
         }
         CommandGroup(after: .saveItem) {
+            Button("Open Production Workspace…") { ProductionStudioLauncher.shared.open() }
+            Button("Production Setup…") { session?.showProductionSetup = true }.disabled(session == nil)
             Menu("Export") { ForEach(ExportFormat.allCases, id: \.self) { format in Button("\(format.rawValue.uppercased())…") { session?.export(format) } } }
             .disabled(session == nil)
+            Button("Export Production SVG / Check…") { session?.showProductionSetup = true }.disabled(session == nil)
         }
         CommandMenu("Artwork") {
             Button("Draw with AI…") { session?.showGeneration = true }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(session == nil)

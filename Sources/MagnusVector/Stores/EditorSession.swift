@@ -49,6 +49,7 @@ final class EditorSession: ObservableObject {
     @Published var selectedContour = 0
     @Published var error: String?
     @Published var showGeneration = false
+    @Published var showProductionSetup = false
     @Published var exportFormat: ArtworkFileFormat?
     let history = UndoManager()
     let dragSessionID = UUID()

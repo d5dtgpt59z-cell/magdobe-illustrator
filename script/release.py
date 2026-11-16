@@ -17,9 +17,10 @@ import tempfile
 
 DEFAULT_APP = Path('dist/release/Magdobe Illustrator.app')
 HELPER = Path('Contents/Helpers/MagdobeArtworkWorker.app/Contents/MacOS/MagdobeArtworkWorker')
+PRESSCHECK_HELPER = Path('Contents/Helpers/PressCheckWorker.app/Contents/MacOS/PressCheckWorker')
 MACH_MAGICS = {b'\xfe\xed\xfa\xce', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca', b'\xca\xfe\xba\xbf', b'\xbf\xba\xfe\xca'}
 SYSTEM_ROOTS = ('/System/Library/', '/usr/lib/')
-TEXT_SUFFIXES = {'.json', '.plist', '.txt', '.py', '.sh', '.md', '.toml', '.ini', '.cfg'}
+TEXT_SUFFIXES = {'.json', '.plist', '.txt', '.py', '.sh', '.md', '.toml', '.ini', '.cfg', '.html', '.js', '.mjs', '.css', '.map', '.svg'}
 PRIVATE_CONTENT = [re.compile(rb'/Users/[^/\s<>]+/'), re.compile(rb'/home/[^/\s<>]+/'),
                    re.compile(rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
                    re.compile(rb'\bsk-[A-Za-z0-9_-]{24,}\b'), re.compile(rb'\bgh[pousr]_[A-Za-z0-9]{25,}\b')]
@@ -94,6 +95,20 @@ def inspect_layout(app):
     helper = app / HELPER
     if not helper.is_file() or not os.access(helper, os.X_OK) or not is_macho(helper):
         raise ReleaseError('The bundled artwork worker is missing. Run script/build_release.sh first.')
+    if version_tuple(info['CFBundleShortVersionString']) >= (0, 9, 0):
+        checker = app / PRESSCHECK_HELPER
+        if not checker.is_file() or not os.access(checker, os.X_OK) or not is_macho(checker):
+            raise ReleaseError('The bundled PressCheck worker is missing. Rebuild the self-contained distribution.')
+        try:
+            checker_info = plistlib.loads((checker.parent.parent / 'Info.plist').read_bytes())
+            if checker_info.get('CFBundleExecutable') != checker.name or checker_info.get('CFBundlePackageType') != 'APPL':
+                raise ValueError('Invalid checker bundle metadata')
+        except (OSError, ValueError, plistlib.InvalidFileException) as error:
+            raise ReleaseError('The bundled PressCheck app Info.plist is missing or invalid.') from error
+        resources = checker.parent.parent / 'Resources'
+        for item in ['web/production/index.html', 'PressCheck-LICENSE.txt', 'PressCheck-source.zip', 'source-revision.json']:
+            if not (resources / item).is_file():
+                raise ReleaseError('A bundled PressCheck workspace or source/license resource is missing: ' + item)
     notices = app / 'Contents/Resources/ThirdPartyNotices'
     if not all((notices / name).is_file() for name in ['manifest.json', 'Magdobe-LICENSE.txt', 'Python-LICENSE.txt']):
         raise ReleaseError('The bundled app license or third-party license manifest is missing.')
@@ -120,7 +135,8 @@ def load_commands(path):
     text = run(['/usr/bin/otool', '-l', path]).stdout
     rpaths = re.findall(r'cmd LC_RPATH\s+cmdsize \d+\s+path (.*?) \(offset \d+\)', text)
     versions = re.findall(r'\bminos ([\d.]+)', text) + re.findall(r'cmd LC_VERSION_MIN_MACOSX\s+cmdsize \d+\s+version ([\d.]+)', text)
-    return rpaths, versions
+    identities = re.findall(r'cmd LC_ID_DYLIB\s+cmdsize \d+\s+name (.*?) \(offset \d+\)', text)
+    return rpaths, versions, identities
 
 
 def executable_dir(path, app):
@@ -149,16 +165,23 @@ def verify_dependencies(app, info, main, helper, machos, arch):
     if not required or not required.issubset(main_archs):
         raise ReleaseError('The main executable does not contain the requested architecture.')
     commands = {path: load_commands(path) for path in machos}
-    root_rpaths = []
-    for executable in [main.resolve(), helper.resolve()]:
+    # dyld inherits an executable's runpaths, not those of independent helper
+    # processes. Keep each process context separate when checking its libraries.
+    root_rpaths = {}
+    executables = [main.resolve(), helper.resolve()]
+    if (app / PRESSCHECK_HELPER).is_file():
+        executables.append((app / PRESSCHECK_HELPER).resolve())
+    for executable in executables:
+        owner = executable_dir(executable, app).resolve()
+        search_paths = root_rpaths.setdefault(owner, [])
         for value in commands[executable][0]:
-            root_rpaths.append(expand_local(value, executable, app))
+            search_paths.append(expand_local(value, executable, app))
     for path in machos:
         relative = str(path.relative_to(app))
         archs = set(run(['/usr/bin/lipo', '-archs', path]).stdout.split())
         if not required.issubset(archs):
             raise ReleaseError('Architecture mismatch: ' + relative)
-        rpaths, versions = commands[path]
+        rpaths, versions, identities = commands[path]
         for version in versions:
             if version_tuple(version) > version_tuple(info['LSMinimumSystemVersion']):
                 raise ReleaseError('A native dependency requires newer macOS than Info.plist declares: ' + relative)
@@ -172,13 +195,20 @@ def verify_dependencies(app, info, main, helper, machos, arch):
                 raise ReleaseError('Nonportable library search path in ' + relative)
             local_rpaths.append(expanded)
         lines = run(['/usr/bin/otool', '-L', path]).stdout.splitlines()[1:]
+        remaining_identities = list(identities)
         for line in lines:
             value = line.strip().split(' (', 1)[0]
             if not value or value.endswith(':') or value.startswith(SYSTEM_ROOTS):
                 continue
-            # LC_ID_DYLIB names may refer to the library itself; resolve them like dependencies.
+            # otool -L includes the dylib's install ID. That is not a load
+            # dependency. Consume each ID once, so an actual load command with
+            # the same name still has to resolve in this executable's context.
+            if value in remaining_identities:
+                remaining_identities.remove(value)
+                continue
             if value.startswith('@rpath/'):
-                candidates = [root / value[len('@rpath/'):] for root in local_rpaths + root_rpaths]
+                owner_paths = root_rpaths.get(executable_dir(path, app).resolve(), [])
+                candidates = [root / value[len('@rpath/'):] for root in local_rpaths + owner_paths]
             elif value.startswith(('@loader_path', '@executable_path')):
                 candidates = [expand_local(value, path, app)]
             else:
@@ -195,6 +225,18 @@ def signing_targets(app, machos):
                 and any(inside(binary, path) for binary in machos)):
             targets.add(path)
     targets.add(app)
+    # Signing an app's CFBundleExecutable can implicitly sign its enclosing app.
+    # Seal that executable through the app bundle only, after all nested code.
+    for bundle in [target for target in targets if target.suffix == '.app' and target.is_dir()]:
+        try:
+            info = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
+            executable = info['CFBundleExecutable']
+            if not isinstance(executable, str) or Path(executable).name != executable:
+                raise ValueError('Invalid bundle executable')
+        except (OSError, ValueError, KeyError, plistlib.InvalidFileException) as error:
+            raise ReleaseError('App signing requires valid bundle metadata: ' + str(bundle.relative_to(app))) from error
+        primary = (bundle / 'Contents/MacOS' / executable).resolve()
+        targets = {target for target in targets if target.is_dir() or target.resolve() != primary}
     return sorted(targets, key=lambda p: (-len(p.parts), str(p)))
 
 

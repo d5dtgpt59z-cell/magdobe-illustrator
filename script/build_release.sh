@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
-RELEASE_DIR="$ROOT_DIR/dist/release"
+RELEASE_DIR="${MAGDOBE_RELEASE_DIR:-$ROOT_DIR/dist/release}"
 if [[ -e "$RELEASE_DIR/Magdobe Illustrator.app" ]]; then
   echo "Release app already exists. Move it aside before rebuilding; signed artifacts are never overwritten." >&2
   exit 1
@@ -28,12 +28,15 @@ STAGE="$ROOT_DIR/.build/distribution-stage"
 if [[ -d "$STAGE" ]]; then rm -rf "$STAGE"; fi
 mkdir -p "$STAGE"
 APP="$STAGE/Magdobe Illustrator.app"
-"$BUILD_ENV/bin/python" script/app_bundle.py --binary "$BUILD_BINARY" --output "$APP" --build-number "${MAGDOBE_BUILD_NUMBER:-3}"
+"$BUILD_ENV/bin/python" script/app_bundle.py --binary "$BUILD_BINARY" --output "$APP" --build-number "${MAGDOBE_BUILD_NUMBER:-4}"
 # Distribution binaries do not need local symbols or builder/source paths.
 /usr/bin/xcrun strip -S -x "$APP/Contents/MacOS/MagnusVector"
 "$BUILD_ENV/bin/python" -m PyInstaller --noconfirm --clean --distpath "$ROOT_DIR/.build/frozen-artwork" --workpath "$ROOT_DIR/.build/frozen-artwork-work" script/ArtworkWorker.spec
 mkdir -p "$APP/Contents/Helpers"
 /usr/bin/ditto "$ROOT_DIR/.build/frozen-artwork/MagdobeArtworkWorker.app" "$APP/Contents/Helpers/MagdobeArtworkWorker.app"
+PRESSCHECK_ARGS=()
+if [[ -n "${MAGDOBE_PRESSCHECK_SOURCE:-}" ]]; then PRESSCHECK_ARGS=(--source "$MAGDOBE_PRESSCHECK_SOURCE"); fi
+"$BUILD_ENV/bin/python" script/build_presscheck_worker.py --output "$APP/Contents/Helpers/PressCheckWorker.app" "${PRESSCHECK_ARGS[@]}"
 "$BUILD_ENV/bin/python" script/release_notices.py --output "$APP/Contents/Resources/ThirdPartyNotices"
 # Developer tools and package caches may have owner-only permissions.
 /bin/chmod -R a+rX "$APP"

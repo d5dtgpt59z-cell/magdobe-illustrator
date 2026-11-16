@@ -10,6 +10,7 @@ struct VectorNode: Codable, Equatable, Identifiable {
     var visible = true
     var locked = false
     var children: [VectorNode] = []
+    var productionRole: ProductionRole? = nil
 
     static func object(_ id: UUID) -> VectorNode { VectorNode(id: id, kind: .object) }
     var objectIDs: [UUID] { kind == .object ? [id] : children.flatMap(\.objectIDs) }
@@ -25,10 +26,11 @@ struct HierarchyIndex {
     var locked: Set<UUID> = []
     var blockedContainers: Set<UUID> = []
     var shapeIndices: [UUID: Int] = [:]
+    var productionRoles: [UUID: ProductionRole] = [:]
 
     init(_ project: VectorProject) {
         for (i, shape) in project.shapes.enumerated() { shapeIndices[shape.id] = i }
-        func visit(_ items: [VectorNode], parent: UUID?, hiddenAncestor: Bool, lockedAncestor: Bool) {
+        func visit(_ items: [VectorNode], parent: UUID?, hiddenAncestor: Bool, lockedAncestor: Bool, role: ProductionRole?) {
             for node in items {
                 nodes[node.id] = node; parents[node.id] = parent; positions[node.id] = order.count; order.append(node.id)
                 let shape = shapeIndices[node.id].map { project.shapes[$0] }
@@ -36,10 +38,12 @@ struct HierarchyIndex {
                 let isLocked = lockedAncestor || (shape?.locked ?? node.locked)
                 if isHidden { hidden.insert(node.id) }
                 if isLocked { locked.insert(node.id) }
-                visit(node.children, parent: node.id, hiddenAncestor: isHidden, lockedAncestor: isLocked)
+                let effectiveRole = node.productionRole ?? role
+                productionRoles[node.id] = effectiveRole
+                visit(node.children, parent: node.id, hiddenAncestor: isHidden, lockedAncestor: isLocked, role: effectiveRole)
             }
         }
-        visit(project.rootNodes, parent: nil, hiddenAncestor: false, lockedAncestor: false)
+        visit(project.rootNodes, parent: nil, hiddenAncestor: false, lockedAncestor: false, role: nil)
         for id in locked { blockedContainers.formUnion(ancestors(of: id)) }
     }
     func ancestors(of id: UUID) -> [UUID] {

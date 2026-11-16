@@ -265,8 +265,46 @@ def claude_cli(prompt=None,job=None,model=''):
     if not result: raise RuntimeError('Claude Code returned no prompt suggestion.')
     return result[:16000]
 
+def production_cli(provider, system, prompt, job, model, codex):
+    """Use an existing account connection without granting artwork/file-edit tools."""
+    global server
+    if provider == 'codex':
+        if not codex: raise RuntimeError('Install Codex and sign in, or choose an API text provider.')
+        output_file = Path(job) / 'account-proposal.txt'
+        args = [codex, 'exec', '--ignore-user-config', '--ignore-rules', '--sandbox', 'read-only',
+                '--ephemeral', '--skip-git-repo-check', '--disable', 'shell_tool', '--disable', 'apps',
+                '--output-last-message', str(output_file), '-']
+        if model: args += ['--model', model]
+        supplied = system + '\n\nSOURCE DATA:\n' + prompt
+    else:
+        executable = shutil.which('claude')
+        if not executable: raise RuntimeError('Claude Code is not installed. Choose another text provider or install Claude Code and sign in.')
+        args = [executable, '-p', '--output-format', 'json', '--tools', '', '--strict-mcp-config',
+                '--mcp-config', '{"mcpServers":{}}', '--no-session-persistence', '--setting-sources', '',
+                '--system-prompt', system]
+        if model: args += ['--model', model]
+        supplied = prompt
+    server = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, cwd=str(job), env=external_process_environment())
+    try: output, _ = server.communicate(input=supplied, timeout=180)
+    except subprocess.TimeoutExpired:
+        stop(); raise RuntimeError('The production assistant timed out. Your artwork and settings were kept.')
+    if server.returncode:
+        raise RuntimeError('The account-based production assistant could not complete the request. Check its sign-in and version, or choose another text provider. Your settings were kept.')
+    if provider == 'codex':
+        if not output_file.is_file() or output_file.stat().st_size > 100000:
+            raise RuntimeError('Codex returned no usable production proposal. Your settings were kept.')
+        return output_file.read_text()
+    try:
+        response = json.loads(output)
+        if response.get('is_error'): raise ValueError('request failed')
+        return response['result']
+    except (ValueError, KeyError, TypeError):
+        raise RuntimeError('Claude Code returned no usable production proposal. Your settings were kept.') from None
+
+
 def main():
-    p=argparse.ArgumentParser();p.add_argument('mode',choices=['check','generate','trace','improve']);p.add_argument('--codex');p.add_argument('--request');p.add_argument('--job');args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('mode',choices=['check','generate','trace','improve','print-spec']);p.add_argument('--codex');p.add_argument('--request');p.add_argument('--job');args=p.parse_args()
     config=json.loads(os.environ.get('MAGDOBE_PROVIDER_CONFIG','{"provider":"codex"}'))
     provider=config.get('provider','codex');api_key=os.environ.pop('MAGDOBE_PROVIDER_API_KEY','')
     if args.mode=='check':
@@ -278,6 +316,11 @@ def main():
         emit('connected',message=message);return
     job=Path(args.job).resolve();job.mkdir(parents=True,exist_ok=True)
     request=json.loads(Path(args.request).read_text())
+    if args.mode=='print-spec':
+        from production_assistant import propose
+        emit('connecting',message='Reading your printer specifications with the selected AI provider…')
+        target=propose(request,config,api_key,job,args.codex,production_cli)
+        emit('done',proposal=str(target),message='Production proposal ready for review');return
     if args.mode=='improve':
         if provider=='claudeCLI': suggestion=claude_cli(request['prompt'],job,config.get('model',''))
         elif provider=='anthropic':

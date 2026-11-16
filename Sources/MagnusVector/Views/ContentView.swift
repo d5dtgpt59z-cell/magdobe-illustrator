@@ -54,6 +54,7 @@ struct ContentView: View {
         .preferredColorScheme(.light)
         .tint(PaperTexture.accent)
         .sheet(isPresented: $session.showGeneration) { GenerationView(session: session) }
+        .sheet(isPresented: $session.showProductionSetup) { ProductionSetupView(session: session, project: document.project) }
         .sheet(item: $session.exportFormat) { format in
             ArtworkSaveView(project: document.project, initialFormat: format, includesProject: false)
         }
@@ -74,6 +75,8 @@ struct ContentView: View {
                     .help("Save this editable Magdobe project (⌘S). Reopen it to keep editing objects and layers.")
                 Menu {
                     ForEach(ExportFormat.allCases, id: \.self) { format in Button("Export \(format.rawValue.uppercased())…") { session.export(format) } }
+                    Divider()
+                    Button("Production Setup / Check…") { session.showProductionSetup = true }
                 } label: { Label("Export", systemImage: "square.and.arrow.up").labelStyle(.titleAndIcon) }.help("Export artwork as SVG, PDF, or PNG")
             }
         }

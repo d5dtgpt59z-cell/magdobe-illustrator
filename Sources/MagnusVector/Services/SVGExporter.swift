@@ -74,15 +74,16 @@ enum SVGExporter {
         guard !bounds.isNull else { throw SVGExportError.emptyDrawing }
         return CGRect(x: bounds.minX, y: bounds.minY, width: max(1, bounds.width), height: max(1, bounds.height))
     }
-    private static func serialize(_ project: VectorProject, options: SVGExportOptions, emit: (String) throws -> Void, progress: (Int, Int) -> Void = { _, _ in }) throws {
+    static func serialize(_ project: VectorProject, options: SVGExportOptions, embedded: Bool = false, emit: (String) throws -> Void, progress: (Int, Int) -> Void = { _, _ in }) throws {
         _ = try project.validated()
         let box = try viewport(project, options: options)
         let newline = options.optimize ? "" : "\n"
         func line(_ s: String) throws { try emit(s + newline) }
         let viewBox = [box.minX, box.minY, box.width, box.height].map { number($0) }.joined(separator: " ")
-        try line("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+        if !embedded { try line("<?xml version=\"1.0\" encoding=\"UTF-8\"?>") }
         // Explicit points match Core Graphics / PDF dimensions; viewBox retains document coordinates.
-        try line("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"\(number(box.width))pt\" height=\"\(number(box.height))pt\" viewBox=\"\(viewBox)\" preserveAspectRatio=\"xMinYMin meet\" overflow=\"hidden\">")
+        let unit = embedded ? "" : "pt"
+        try line("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"\(number(box.width))\(unit)\" height=\"\(number(box.height))\(unit)\" viewBox=\"\(viewBox)\" preserveAspectRatio=\"xMinYMin meet\" overflow=\"hidden\">")
         try line("<title>Magdobe Illustrator artwork</title>")
         try line("<defs>")
         if options.entireArtboard {
@@ -110,7 +111,8 @@ enum SVGExporter {
                 try line("<g id=\"layer_\(s.id.uuidString.lowercased())\" data-name=\"\(name)\"><title>\(name)</title>")
             }
             // Named native objects retain order, visibility and IDs even when group wrappers are off.
-            let identity = "id=\"\(id)\" data-name=\"\(name)\"\(s.locked ? " data-magdobe-locked=\"true\"" : "")\(s.visible ? "" : " display=\"none\"")"
+            let role = hierarchy.productionRoles[s.id].map { " data-production-role=\"\($0.rawValue)\"" } ?? ""
+            let identity = "id=\"\(id)\" data-name=\"\(name)\"\(role)\(s.locked ? " data-magdobe-locked=\"true\"" : "")\(s.visible ? "" : " display=\"none\"")"
             let fill = s.kind == .text ? (s.fill ?? .ink) : s.fill
             var appearance = "fill=\"\(fill.map(color) ?? "none")\" fill-opacity=\"\(number(fill?.alpha ?? 1))\" opacity=\"\(number(s.opacity))\" fill-rule=\"nonzero\""
             if s.kind != .text {
@@ -159,7 +161,8 @@ enum SVGExporter {
                     try validateXML(node.name, field: "layer or group name")
                     if options.preserveEditableLayers {
                         let name = escape(node.name)
-                        let identity = "id=\"\(node.kind.rawValue)_\(node.id.uuidString.lowercased())\" data-name=\"\(name)\" data-magdobe-kind=\"\(node.kind.rawValue)\""
+                        let role = hierarchy.productionRoles[node.id].map { " data-production-role=\"\($0.rawValue)\"" } ?? ""
+                        let identity = "id=\"\(node.kind.rawValue)_\(node.id.uuidString.lowercased())\" data-name=\"\(name)\" data-magdobe-kind=\"\(node.kind.rawValue)\"\(role)"
                         try line("<g \(identity)\(node.visible ? "" : " display=\"none\"")\(node.locked ? " data-magdobe-locked=\"true\"" : "")><title>\(name)</title>")
                     }
                     try emitNodes(node.children)

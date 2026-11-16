@@ -40,7 +40,7 @@ def fixture_png():
 
 
 @contextmanager
-def image_api(context=None):
+def image_api(context=None, proposal=None):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -54,7 +54,8 @@ def image_api(context=None):
         def do_POST(self):
             data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             requests.append((self.path, data.get("model")))
-            self.respond({"data": [{"b64_json": base64.b64encode(fixture_png()).decode()}]})
+            self.respond({"choices": [{"message": {"content": json.dumps(proposal)}}]} if proposal is not None
+                         else {"data": [{"b64_json": base64.b64encode(fixture_png()).decode()}]})
 
         def respond(self, value):
             body = json.dumps(value).encode()
@@ -141,6 +142,30 @@ class FrozenBundleTests(unittest.TestCase):
         self.assert_editable(result, events, job)
         self.assertIn(("/v1/images/generations", "fixture-image"), requests)
         self.assertNotIn("fixture-key-not-a-real-credential", result.stdout + result.stderr)
+
+    def test_relocated_printer_assistant_uses_bundled_module_and_text_model(self):
+        if not (self.app / "Contents/Helpers/PressCheckWorker.app/Contents/MacOS/PressCheckWorker").is_file():
+            self.skipTest("Production assistant requires the 0.9 distribution")
+        current = {"schema_version": 1, "workflow": "trading_card", "name": "Fixture card",
+                   "trim_width_mm": 50, "trim_height_mm": 80, "bleed_mm": 3, "safe_mm": 3,
+                   "placement": "fit_trim", "bleed_intent": "full_bleed", "color_policy": "review_rgb",
+                   "supplier_confirmed": True}
+        proposal = {"proposed_job": dict(current, trim_width_mm=63.5),
+                    "unknowns": ["Supplier stock and colour requirements"],
+                    "explanation": "Apply the supplied width only.", "evidence": ["Trim width 2.5 inches."],
+                    "field_evidence": {"trim_width_mm": "Trim width 2.5 inches."}}
+        with image_api(proposal=proposal) as (port, requests):
+            result, events, job = self.run_worker("print-spec", "production-assistant",
+                {"instructions": "Trim width 2.5 inches.", "current_job": current},
+                {"provider": "compatible", "model": "fixture-text", "baseURL": f"http://127.0.0.1:{port}/v1"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(events[-1]["stage"], "done")
+        self.assertIn(("/v1/chat/completions", "fixture-text"), requests)
+        receipt = (job / "production-proposal.json").read_text()
+        restored = json.loads(receipt)
+        self.assertEqual(restored["proposed_job"]["trim_width_mm"], 63.5)
+        self.assertFalse(restored["proposed_job"]["supplier_confirmed"])
+        self.assertNotIn("fixture-key-not-a-real-credential", receipt + result.stdout + result.stderr)
 
     def test_frozen_https_validates_certificates_and_respects_user_ca(self):
         certificate, key = self.directory / "fixture-ca.pem", self.directory / "fixture-key.pem"
