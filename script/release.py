@@ -18,6 +18,11 @@ import tempfile
 DEFAULT_APP = Path('dist/release/Magdobe Illustrator.app')
 HELPER = Path('Contents/Helpers/MagdobeArtworkWorker.app/Contents/MacOS/MagdobeArtworkWorker')
 PRESSCHECK_HELPER = Path('Contents/Helpers/PressCheckWorker.app/Contents/MacOS/PressCheckWorker')
+GHOSTSCRIPT = PRESSCHECK_HELPER.parent / 'ghostscript-gs'
+GHOSTSCRIPT_RESOURCES = PRESSCHECK_HELPER.parent.parent / 'Resources/Ghostscript'
+GHOSTSCRIPT_VERSION = '10.08.0'
+GHOSTSCRIPT_SOURCE_SHA256 = 'c20492bc8ebb96c87fa2e52a0926e1cda8cde95d66145e018ac713fed5da38cf'
+GHOSTSCRIPT_SOURCE_URL = 'https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10080/ghostscript-10.08.0.tar.xz'
 MACH_MAGICS = {b'\xfe\xed\xfa\xce', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca', b'\xca\xfe\xba\xbf', b'\xbf\xba\xfe\xca'}
 SYSTEM_ROOTS = ('/System/Library/', '/usr/lib/')
 TEXT_SUFFIXES = {'.json', '.plist', '.txt', '.py', '.sh', '.md', '.toml', '.ini', '.cfg', '.html', '.js', '.mjs', '.css', '.map', '.svg'}
@@ -31,8 +36,8 @@ class ReleaseError(RuntimeError):
     pass
 
 
-def run(args, *, check=True):
-    result = subprocess.run([str(x) for x in args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+def run(args, *, check=True, env=None, timeout=None):
+    result = subprocess.run([str(x) for x in args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, timeout=timeout)
     if check and result.returncode:
         detail = (result.stderr or result.stdout).strip()[-3000:]
         raise ReleaseError(Path(str(args[0])).name + ' failed: ' + detail)
@@ -53,6 +58,50 @@ def is_macho(path):
             return stream.read(4) in MACH_MAGICS
     except OSError:
         return False
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def inspect_ghostscript(app):
+    executable, resources = app / GHOSTSCRIPT, app / GHOSTSCRIPT_RESOURCES
+    if not executable.is_file() or not os.access(executable, os.X_OK) or not is_macho(executable):
+        raise ReleaseError('The bundled Ghostscript sidecar is missing, not executable, or not Mach-O. Rebuild the production PDF distribution.')
+    required = ['manifest.json', 'notices/LICENSE', 'notices/doc/COPYING',
+                'corresponding-source/ghostscript-10.08.0.tar.xz',
+                'corresponding-source/build_ghostscript.py', 'corresponding-source/ghostscript-source.json']
+    for item in required:
+        if not (resources / item).is_file() or not (resources / item).stat().st_size:
+            raise ReleaseError('A bundled Ghostscript source/license/build resource is missing: ' + item)
+    try:
+        manifest = json.loads((resources / 'manifest.json').read_text())
+        lock = json.loads((resources / 'corresponding-source/ghostscript-source.json').read_text())
+        source = manifest['source']
+        if (manifest['version'] != GHOSTSCRIPT_VERSION or source != lock or
+                source['version'] != GHOSTSCRIPT_VERSION or source['sha256'] != GHOSTSCRIPT_SOURCE_SHA256 or
+                source['url'] != GHOSTSCRIPT_SOURCE_URL or source['license'] != 'AGPL-3.0-or-later'):
+            raise ValueError('Unpinned source or version')
+    except (OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as error:
+        raise ReleaseError('The bundled Ghostscript version/source manifest is invalid or does not match the pinned release.') from error
+    archive = resources / 'corresponding-source/ghostscript-10.08.0.tar.xz'
+    if file_sha256(archive) != GHOSTSCRIPT_SOURCE_SHA256:
+        raise ReleaseError('The bundled Ghostscript corresponding-source archive checksum is invalid.')
+
+
+def verify_ghostscript_runtime(app):
+    # Dependency/architecture checks run first. Do not inherit GS_OPTIONS, profile
+    # search paths, provider credentials or a user's font setup for this probe.
+    try:
+        result = run([app / GHOSTSCRIPT, '--version'], env={'PATH': '/usr/bin:/bin', 'HOME': '/var/empty', 'LANG': 'C'}, timeout=15)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ReleaseError('The bundled Ghostscript sidecar did not start independently.') from error
+    if result.stdout.strip() != GHOSTSCRIPT_VERSION:
+        raise ReleaseError('The bundled Ghostscript executable version does not match its pinned source resources.')
 
 
 def bundle_files(app):
@@ -109,6 +158,8 @@ def inspect_layout(app):
         for item in ['web/production/index.html', 'PressCheck-LICENSE.txt', 'PressCheck-source.zip', 'source-revision.json']:
             if not (resources / item).is_file():
                 raise ReleaseError('A bundled PressCheck workspace or source/license resource is missing: ' + item)
+    if version_tuple(info['CFBundleShortVersionString']) >= (0, 10, 0):
+        inspect_ghostscript(app)
     notices = app / 'Contents/Resources/ThirdPartyNotices'
     if not all((notices / name).is_file() for name in ['manifest.json', 'Magdobe-LICENSE.txt', 'Python-LICENSE.txt']):
         raise ReleaseError('The bundled app license or third-party license manifest is missing.')
@@ -267,6 +318,8 @@ def verify_signatures(app, machos, mode):
 def verify(app, mode='preview', arch=None):
     app, info, main, helper, machos = inspect_layout(app)
     architectures = verify_dependencies(app, info, main, helper, machos, arch)
+    if version_tuple(info['CFBundleShortVersionString']) >= (0, 10, 0):
+        verify_ghostscript_runtime(app)
     if mode != 'preview':
         verify_signatures(app, machos, mode)
     return {'app': str(app), 'mode': mode, 'version': info['CFBundleShortVersionString'], 'build': str(info['CFBundleVersion']),

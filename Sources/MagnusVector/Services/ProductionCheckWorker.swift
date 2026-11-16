@@ -128,7 +128,7 @@ struct ProductionCheckWorker {
 }
 
 /// Blocking process waits are confined to background queues. Pipe readers retain bounded output.
-private final class ProductionWorkerProcess: @unchecked Sendable {
+final class ProductionWorkerProcess: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     private var cancelled = false

@@ -4,6 +4,8 @@ struct ProductionSetupView: View {
     @ObservedObject var session: EditorSession
     let project: VectorProject
     @State private var spec: ProductionSpec
+    @State private var iccProfile: Data?
+    @State private var importingICC = false
     @State private var inches = false
     @State private var profiles = ProductionProfiles.load()
     @State private var message: String?
@@ -14,8 +16,15 @@ struct ProductionSetupView: View {
     init(session: EditorSession, project: VectorProject) {
         self.session = session; self.project = project
         _spec = State(initialValue: project.production ?? ProductionSpec())
+        _iccProfile = State(initialValue: project.productionICCProfile)
     }
     private var valid: Bool { (try? spec.validated()) != nil }
+    private var controlsBusy: Bool { workflow.busy || workflow.choosingDestination || importingICC }
+    private var validPDF: Bool {
+        guard valid, let settings = spec.pdf, (try? settings.validated(requireProfile: true)) != nil,
+              let iccProfile else { return false }
+        return !iccProfile.isEmpty && iccProfile.count <= ProductionICCProfile.maximumBytes
+    }
     private var unit: String { inches ? "in" : "mm" }
     private func length(_ key: WritableKeyPath<ProductionSpec, Double>) -> Binding<Double> {
         Binding(get: { spec[keyPath: key] / (inches ? 25.4 : 1) }, set: { spec[keyPath: key] = $0 * (inches ? 25.4 : 1) })
@@ -37,14 +46,16 @@ struct ProductionSetupView: View {
                         dimensionFields
                         requirementFields
                         profileFields
-                        ProductionAssistantView(spec: $spec).disabled(workflow.busy)
+                        ProductionPDFSettingsView(settings: $spec.pdf, profileData: $iccProfile, importing: $importingICC)
+                            .disabled(controlsBusy)
+                        ProductionAssistantView(spec: $spec).disabled(controlsBusy)
                     }.frame(maxWidth: .infinity)
                     VStack(alignment: .leading, spacing: 14) {
                         ProductionPreviewView(project: project, spec: spec)
                         Text(spec.placement == .fitTrim ? "Fit within trim: preserves the whole artboard and may leave unprinted margins. Bleed is not invented." : "Fill through bleed: uniformly scales and centers the artboard; parts outside the bleed rectangle are cropped in this delivery copy.")
                             .font(.caption).foregroundStyle(.secondary)
-                        Label("RGB vectors · no PDF/X certification", systemImage: "info.circle").font(.caption)
-                        Text("Color policy records the printer requirement. This export does not convert colors to CMYK or turn production roles into spot-ink plates. Check the report and obtain supplier approval.")
+                        Label("Editable SVG · separate production PDF", systemImage: "info.circle").font(.caption)
+                        Text("Production SVG stays RGB. Production PDF uses the imported printer profile and supported finalizer checks. Roles alone do not create spot-ink plates; supplier proof approval remains separate.")
                             .font(.caption).foregroundStyle(.secondary)
                         if workflow.busy {
                             ProgressView()
@@ -54,9 +65,13 @@ struct ProductionSetupView: View {
                         if let error = workflow.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
                         if let url = workflow.savedURL {
                             Label("Saved \(url.lastPathComponent)", systemImage: "checkmark.circle").foregroundStyle(.green)
-                            Button("Show in Finder") { workflow.reveal(url) }.help("Reveal the physically sized SVG you exported")
+                            Button("Show in Finder") { workflow.reveal(url) }.help("Reveal the production artwork you exported")
                         }
                         if let result = workflow.result { ProductionReportSummary(result: result, open: workflow.openReport) }
+                        if let result = workflow.pdfResult { ProductionPDFReportSummary(result: result, open: workflow.openPDFReport) }
+                        if let directory = workflow.pdfArtifacts {
+                            Button("Show PDF Artifacts") { workflow.reveal(directory) }.help("Reveal the retained RGB draft, ICC copy, job, object manifest and validation output")
+                        }
                     }.frame(width: 300)
                 }.padding(.trailing, 8)
             }
@@ -64,19 +79,22 @@ struct ProductionSetupView: View {
             if !valid { Text((try? spec.validated()) == nil ? validationMessage : "").font(.caption).foregroundStyle(.red) }
             Divider()
             HStack {
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction).disabled(workflow.busy)
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction).disabled(controlsBusy)
                 Spacer()
                 if workflow.busy { Button("Cancel") { workflow.cancel() }.help("Cancel this copy's export or local check") }
                 else {
-                    Button("Save Setup") { saveSetup() }.disabled(!valid).help("Store these requirements in the editable project, with undo support")
-                    Button("Export Production SVG…") { workflow.export(project: project, spec: spec) }.disabled(!valid).help("Save a separate editable SVG with physical millimeter dimensions and job metadata")
-                    Button("Check Locally") { workflow.check(project: project, spec: spec) }.buttonStyle(.borderedProminent).disabled(!valid)
+                    Button("Save Setup") { saveSetup() }.disabled(!valid || controlsBusy).help("Store these requirements and the active ICC profile in the editable project, with undo support")
+                    Menu("Export") {
+                        Button("Production SVG…") { workflow.export(project: project, spec: spec) }.disabled(!valid)
+                        Button("Production PDF…") { if let iccProfile { workflow.exportPDF(project: project, spec: spec, icc: iccProfile) } }.disabled(!validPDF)
+                    }.disabled(controlsBusy).help("Export a physically sized editable SVG or a finalized production PDF")
+                    Button("Check Locally") { workflow.check(project: project, spec: spec) }.buttonStyle(.borderedProminent).disabled(!valid || controlsBusy)
                         .help("Check a snapshot with bundled PressCheck. No artwork or provider key is uploaded.")
                 }
             }
         }.padding(24).frame(width: 900, height: 790)
             .background(PaperTexture.surface).preferredColorScheme(.light).tint(PaperTexture.accent)
-            .interactiveDismissDisabled(workflow.busy)
+            .interactiveDismissDisabled(controlsBusy)
             .onChange(of: spec) { old, next in
                 workflow.clearReceipts()
                 message = nil
@@ -98,7 +116,7 @@ struct ProductionSetupView: View {
                 }.help("Choose the rule context; structural packaging still requires an approved dieline")
                 Text("Defaults are an unconfirmed example, not supplier specifications.").font(.caption).foregroundStyle(.secondary)
             }.padding(8)
-        }.disabled(workflow.busy)
+        }.disabled(controlsBusy)
     }
     private var dimensionFields: some View {
         GroupBox("Physical size and placement") {
@@ -116,7 +134,7 @@ struct ProductionSetupView: View {
                     Text("Intentional white border").tag(ProductionSpec.BleedIntent.whiteBorder)
                 }.help("Tell preflight whether backgrounds must reach the bleed edge")
             }.padding(8)
-        }.disabled(workflow.busy)
+        }.disabled(controlsBusy)
     }
     private func dimension(_ label: String, key: WritableKeyPath<ProductionSpec, Double>) -> some View {
         ProductionDimensionField(label: label, unit: unit, precision: inches ? 4 : 3, value: length(key))
@@ -145,7 +163,7 @@ struct ProductionSetupView: View {
                 Toggle("Requirements confirmed by supplier", isOn: $spec.supplierConfirmed).toggleStyle(.checkbox)
                     .help("Check only after your supplier confirms these requirements. AI proposals cannot confirm them.")
             }.padding(8)
-        }.disabled(workflow.busy)
+        }.disabled(controlsBusy)
     }
     private var profileFields: some View {
         GroupBox("Custom printer profile") {
@@ -159,31 +177,60 @@ struct ProductionSetupView: View {
                 HStack {
                     Menu("Load Profile") {
                         ForEach(profiles) { profile in
-                            Button(profile.spec.profileName ?? profile.spec.name) { spec = profile.spec; spec.supplierConfirmed = false }
+                            Button(profile.spec.profileName ?? profile.spec.name) { loadProfile(profile) }
                         }
                     }.disabled(profiles.isEmpty).help("Load a saved profile; confirm it with the supplier for this job")
                     Button("Save Profile") { saveProfile() }.disabled(!valid || (spec.profileName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .help("Save this named printer profile locally for reuse")
                 }
             }.padding(8)
-        }.disabled(workflow.busy)
+        }.disabled(controlsBusy)
     }
     private func optional(_ key: WritableKeyPath<ProductionSpec, String?>) -> Binding<String> {
         Binding(get: { spec[keyPath: key] ?? "" }, set: { spec[keyPath: key] = $0.isEmpty ? nil : $0 })
     }
     private func saveSetup() {
-        do { try session.applyProductionSpec(spec); message = "Production setup saved in this editable project. Save the project to keep it on disk."; messageIsError = false }
+        do { try session.applyProductionSpec(spec, iccProfile: iccProfile); message = "Production setup saved in this editable project. Save the project to keep it on disk."; messageIsError = false }
         catch { message = error.localizedDescription; messageIsError = true }
     }
     private func saveProfile() {
         do {
             var saved = spec; saved.supplierConfirmed = false
+            if let descriptor = saved.pdf?.iccProfile {
+                guard let iccProfile else { throw ProductionPDFError.missingProfile }
+                try ProductionICCLibrary().save(iccProfile, descriptor: descriptor)
+            }
             var updated = profiles
             if let index = updated.firstIndex(where: { $0.spec.profileName == spec.profileName }) { updated[index].spec = saved }
             else { updated.append(ProductionProfile(spec: saved)) }
             try ProductionProfiles.save(updated); profiles = updated
             message = "Custom printer profile saved on this Mac."; messageIsError = false
         } catch { message = error.localizedDescription; messageIsError = true }
+    }
+    private func loadProfile(_ profile: ProductionProfile) {
+        var next = profile.spec; next.supplierConfirmed = false
+        if let descriptor = next.pdf?.iccProfile {
+            do { iccProfile = try ProductionICCLibrary().load(descriptor) }
+            catch { iccProfile = nil }
+        } else { iccProfile = nil }
+        spec = next
+    }
+}
+
+private struct ProductionPDFReportSummary: View {
+    let result: ProductionPDFResult
+    let open: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            Text(result.passed ? "PDF · supported checks passed" : "PDF · validation failed").font(.headline)
+            Text("This is a report for the generated PDF, not manufacturing approval or independent full ISO certification.").font(.caption).foregroundStyle(.secondary)
+            ForEach(Array(result.report.findings.prefix(50).enumerated()), id: \.offset) { _, finding in
+                Text("\(finding.status.uppercased()) · \(finding.message)").font(.caption).textSelection(.enabled)
+            }
+            ForEach(result.report.limitations, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+            if result.reportURL != nil { Button("Open PDF Report") { open() } }
+        }
     }
 }
 

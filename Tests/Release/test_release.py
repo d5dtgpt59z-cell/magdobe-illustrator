@@ -1,5 +1,7 @@
 """Offline release gates: no signing identities, Keychain profiles, or network calls."""
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import plistlib
 import subprocess
@@ -34,16 +36,50 @@ class ReleaseTests(unittest.TestCase):
         for name, value in [('manifest.json', '{"dependencies":["python"]}'), ('Magdobe-LICENSE.txt', 'MIT fixture'), ('Python-LICENSE.txt', 'PSF fixture')]:
             (notices / name).write_text(value)
 
-    def fake_tools(self, args, check=True):
+    def fake_tools(self, args, check=True, **kwargs):
         command = [str(a) for a in args]
         output = ''
-        if command[0].endswith('lipo'):
+        if Path(command[0]).name == 'ghostscript-gs':
+            output = release.GHOSTSCRIPT_VERSION + '\n'
+        elif command[0].endswith('lipo'):
             output = 'arm64\n'
         elif command[1] == '-l':
             output = 'Load command 1\n cmd LC_BUILD_VERSION\n cmdsize 32\n platform MACOS\n minos 14.0\n sdk 26.5\n'
         elif command[1] == '-L':
             output = command[-1] + ':\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)\n'
         return subprocess.CompletedProcess(command, 0, output, '')
+
+    def production_pdf_layout(self):
+        self.info['CFBundleShortVersionString'] = '0.10.0'
+        (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps(self.info))
+        checker = self.app / release.PRESSCHECK_HELPER
+        checker.parent.mkdir(parents=True)
+        checker.write_bytes(b'\xcf\xfa\xed\xfefixture')
+        checker.chmod(0o755)
+        (checker.parent.parent / 'Info.plist').write_bytes(plistlib.dumps({
+            'CFBundleExecutable': checker.name, 'CFBundlePackageType': 'APPL'}))
+        for item in ['web/production/index.html', 'PressCheck-LICENSE.txt', 'PressCheck-source.zip', 'source-revision.json']:
+            target = checker.parent.parent / 'Resources' / item
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text('fixture')
+        sidecar = self.app / release.GHOSTSCRIPT
+        sidecar.write_bytes(b'\xcf\xfa\xed\xfefixture')
+        sidecar.chmod(0o755)
+        resources = self.app / release.GHOSTSCRIPT_RESOURCES
+        archive = resources / 'corresponding-source/ghostscript-10.08.0.tar.xz'
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b'bounded source fixture; not an upstream archive')
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        pinned = patch.object(release, 'GHOSTSCRIPT_SOURCE_SHA256', digest)
+        pinned.start(); self.addCleanup(pinned.stop)
+        source = {'version': release.GHOSTSCRIPT_VERSION, 'sha256': digest,
+                  'url': release.GHOSTSCRIPT_SOURCE_URL, 'license': 'AGPL-3.0-or-later'}
+        (resources / 'manifest.json').write_text(json.dumps({'version': release.GHOSTSCRIPT_VERSION, 'source': source}))
+        (archive.parent / 'ghostscript-source.json').write_text(json.dumps(source))
+        (archive.parent / 'build_ghostscript.py').write_text('# recipe fixture\n')
+        for name in ['notices/LICENSE', 'notices/doc/COPYING']:
+            target = resources / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_text('license fixture')
+        return sidecar, resources
 
     def test_preview_layout_is_portable_but_not_reported_distribution_ready(self):
         with patch.object(release, 'run', side_effect=self.fake_tools) as commands:
@@ -82,6 +118,58 @@ class ReleaseTests(unittest.TestCase):
             report = release.verify(self.app, arch='arm64')
         self.assertEqual(report['nativeCodeFiles'], 3)
         self.assertEqual(release.executable_dir(checker.parent / '_internal/libexample.dylib', self.app), checker.parent)
+
+    def test_pdf_release_requires_pinned_ghostscript_code_source_and_licenses(self):
+        sidecar, resources = self.production_pdf_layout()
+        with patch.object(release, 'run', side_effect=self.fake_tools) as commands:
+            report = release.verify(self.app, arch='arm64')
+        self.assertEqual(report['nativeCodeFiles'], 4)
+        version_call = next(call for call in commands.call_args_list if str(call.args[0][0]).endswith('ghostscript-gs'))
+        self.assertEqual(version_call.args[0][1:], ['--version'])
+        self.assertEqual(version_call.kwargs['env'], {'PATH': '/usr/bin:/bin', 'HOME': '/var/empty', 'LANG': 'C'})
+        sidecar.unlink()
+        with self.assertRaisesRegex(release.ReleaseError, 'Ghostscript sidecar'):
+            release.inspect_layout(self.app)
+        sidecar.write_bytes(b'not native code'); sidecar.chmod(0o755)
+        with self.assertRaisesRegex(release.ReleaseError, 'Ghostscript sidecar'):
+            release.inspect_layout(self.app)
+
+    def test_pdf_release_rejects_missing_tampered_or_unpinned_ghostscript_resources(self):
+        _, resources = self.production_pdf_layout()
+        for name in ['notices/LICENSE', 'notices/doc/COPYING', 'corresponding-source/build_ghostscript.py']:
+            target = resources / name; original = target.read_bytes(); target.unlink()
+            with self.subTest(name=name), self.assertRaisesRegex(release.ReleaseError, 'source/license/build resource'):
+                release.inspect_layout(self.app)
+            target.write_bytes(original)
+        manifest = resources / 'manifest.json'; original = manifest.read_bytes()
+        for invalid in ['[]', '{', '{"version":"10.07.0","source":{}}']:
+            manifest.write_text(invalid)
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(release.ReleaseError, 'version/source manifest'):
+                release.inspect_layout(self.app)
+        manifest.write_bytes(original)
+        archive = resources / 'corresponding-source/ghostscript-10.08.0.tar.xz'
+        archive.write_bytes(b'tampered source')
+        with self.assertRaisesRegex(release.ReleaseError, 'archive checksum'):
+            release.inspect_layout(self.app)
+
+    def test_pdf_release_checks_runtime_version_after_dependency_gates(self):
+        sidecar, _ = self.production_pdf_layout()
+        def wrong_version(args, **kwargs):
+            result = self.fake_tools(args, **kwargs)
+            if Path(args[0]).resolve() == sidecar.resolve(): result.stdout = '10.07.0\n'
+            return result
+        with patch.object(release, 'run', side_effect=wrong_version), self.assertRaisesRegex(release.ReleaseError, 'executable version'):
+            release.verify(self.app, arch='arm64')
+        calls = []
+        def unsafe_dependency(args, **kwargs):
+            calls.append(args)
+            result = self.fake_tools(args, **kwargs)
+            if str(args[0]).endswith('otool') and args[1] == '-L' and Path(args[-1]).resolve() == sidecar.resolve():
+                result.stdout += '\t/opt/homebrew/lib/libunsafe.dylib (compatibility version 1.0.0)\n'
+            return result
+        with patch.object(release, 'run', side_effect=unsafe_dependency), self.assertRaisesRegex(release.ReleaseError, 'dependency'):
+            release.verify(self.app, arch='arm64')
+        self.assertFalse(any(Path(args[0]).resolve() == sidecar.resolve() for args in calls))
 
     def test_private_paths_secrets_and_user_artwork_cannot_be_packaged(self):
         resources = self.app / 'Contents/Resources'
@@ -222,17 +310,21 @@ class ReleaseTests(unittest.TestCase):
         checker.write_bytes(b'\xcf\xfa\xed\xfefixture')
         checker.chmod(0o755)
         checker_bundle = checker.parent.parent.parent
+        ghostscript = checker.parent / 'ghostscript-gs'
+        ghostscript.write_bytes(b'\xcf\xfa\xed\xfefixture')
+        ghostscript.chmod(0o755)
         (checker.parent.parent / 'Info.plist').write_bytes(plistlib.dumps({
             'CFBundleExecutable': checker.name, 'CFBundlePackageType': 'APPL'}))
         license_file = checker.parent.parent / 'Resources/PressCheck-LICENSE.txt'
         license_file.parent.mkdir()
         license_file.write_text('Resource, not executable code')
-        targets = release.signing_targets(self.app, [self.main, self.helper, binary, checker])
+        targets = release.signing_targets(self.app, [self.main, self.helper, binary, checker, ghostscript])
         self.assertEqual(targets[-1], self.app)
         self.assertLess(targets.index(binary), targets.index(framework))
         helper_bundle = self.app / 'Contents/Helpers/MagdobeArtworkWorker.app'
         self.assertLess(targets.index(framework), targets.index(helper_bundle))
         self.assertLess(targets.index(checker_bundle), targets.index(self.app))
+        self.assertLess(targets.index(ghostscript), targets.index(checker_bundle))
         self.assertNotIn(self.main, targets)
         self.assertNotIn(self.helper, targets)
         self.assertNotIn(checker, targets)

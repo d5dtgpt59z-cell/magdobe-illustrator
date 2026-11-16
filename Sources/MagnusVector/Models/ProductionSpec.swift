@@ -25,9 +25,10 @@ struct ProductionSpec: Codable, Equatable {
     var profileName: String?
     var printerNotes: String?
     var specSource: String?
+    var pdf: ProductionPDFSettings?
 
     enum CodingKeys: String, CodingKey {
-        case schemaVersion = "schema_version", workflow, name, placement
+        case schemaVersion = "schema_version", workflow, name, placement, pdf
         case trimWidthMM = "trim_width_mm", trimHeightMM = "trim_height_mm"
         case bleedMM = "bleed_mm", safeMM = "safe_mm", bleedIntent = "bleed_intent"
         case colorPolicy = "color_policy", minTextPT = "min_text_pt", minStrokeMM = "min_stroke_mm"
@@ -55,6 +56,7 @@ struct ProductionSpec: Codable, Equatable {
         profileName = try c.decodeIfPresent(String.self, forKey: .profileName)
         printerNotes = try c.decodeIfPresent(String.self, forKey: .printerNotes)
         specSource = try c.decodeIfPresent(String.self, forKey: .specSource)
+        pdf = try c.decodeIfPresent(ProductionPDFSettings.self, forKey: .pdf)
     }
     func validated() throws -> ProductionSpec {
         guard schemaVersion == 1 else { throw ProductionError.invalidSpec("Unsupported production specification version.") }
@@ -76,6 +78,7 @@ struct ProductionSpec: Codable, Equatable {
         }) else {
             throw ProductionError.invalidSpec("Enter positive minimum requirements within the checker limits: 200 pt text, 100 mm stroke, or 5,000 PPI.")
         }
+        if let pdf { _ = try pdf.validated() }
         return self
     }
     static let pointsPerMM = 72.0 / 25.4

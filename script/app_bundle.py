@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def stage(binary, output, runtime_python=None, build_number="4"):
+def stage(binary, output, runtime_python=None, build_number="5"):
     contents = output / "Contents"
     (contents / "MacOS").mkdir(parents=True, exist_ok=True)
     resources = contents / "Resources"
@@ -63,6 +63,6 @@ if __name__ == "__main__":
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runtime-python", type=Path)
-    parser.add_argument("--build-number", default="4")
+    parser.add_argument("--build-number", default="5")
     args = parser.parse_args()
     stage(args.binary, args.output, args.runtime_python, args.build_number)

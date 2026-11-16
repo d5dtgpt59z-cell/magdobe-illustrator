@@ -1,5 +1,6 @@
 .build/
 dist/
+/output/pdf/
 .DS_Store
 __pycache__/
 

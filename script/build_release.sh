@@ -28,15 +28,20 @@ STAGE="$ROOT_DIR/.build/distribution-stage"
 if [[ -d "$STAGE" ]]; then rm -rf "$STAGE"; fi
 mkdir -p "$STAGE"
 APP="$STAGE/Magdobe Illustrator.app"
-"$BUILD_ENV/bin/python" script/app_bundle.py --binary "$BUILD_BINARY" --output "$APP" --build-number "${MAGDOBE_BUILD_NUMBER:-4}"
+"$BUILD_ENV/bin/python" script/app_bundle.py --binary "$BUILD_BINARY" --output "$APP" --build-number "${MAGDOBE_BUILD_NUMBER:-5}"
 # Distribution binaries do not need local symbols or builder/source paths.
 /usr/bin/xcrun strip -S -x "$APP/Contents/MacOS/MagnusVector"
 "$BUILD_ENV/bin/python" -m PyInstaller --noconfirm --clean --distpath "$ROOT_DIR/.build/frozen-artwork" --workpath "$ROOT_DIR/.build/frozen-artwork-work" script/ArtworkWorker.spec
 mkdir -p "$APP/Contents/Helpers"
 /usr/bin/ditto "$ROOT_DIR/.build/frozen-artwork/MagdobeArtworkWorker.app" "$APP/Contents/Helpers/MagdobeArtworkWorker.app"
-PRESSCHECK_ARGS=()
-if [[ -n "${MAGDOBE_PRESSCHECK_SOURCE:-}" ]]; then PRESSCHECK_ARGS=(--source "$MAGDOBE_PRESSCHECK_SOURCE"); fi
-"$BUILD_ENV/bin/python" script/build_presscheck_worker.py --output "$APP/Contents/Helpers/PressCheckWorker.app" "${PRESSCHECK_ARGS[@]}"
+if [[ -n "${MAGDOBE_PRESSCHECK_SOURCE:-}" ]]; then
+  "$BUILD_ENV/bin/python" script/build_presscheck_worker.py --output "$APP/Contents/Helpers/PressCheckWorker.app" --source "$MAGDOBE_PRESSCHECK_SOURCE"
+else
+  "$BUILD_ENV/bin/python" script/build_presscheck_worker.py --output "$APP/Contents/Helpers/PressCheckWorker.app"
+fi
+GHOSTSCRIPT_BINARY="$("$BUILD_ENV/bin/python" script/build_ghostscript.py --reuse)"
+GHOSTSCRIPT_PREFIX="$(dirname "$(dirname "$GHOSTSCRIPT_BINARY")")"
+"$BUILD_ENV/bin/python" script/stage_ghostscript.py --prefix "$GHOSTSCRIPT_PREFIX" --helper "$APP/Contents/Helpers/PressCheckWorker.app"
 "$BUILD_ENV/bin/python" script/release_notices.py --output "$APP/Contents/Resources/ThirdPartyNotices"
 # Developer tools and package caches may have owner-only permissions.
 /bin/chmod -R a+rX "$APP"

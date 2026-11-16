@@ -18,6 +18,18 @@ enum ProductionAIProvider: String, CaseIterable, Identifiable {
     var requiresModel: Bool { self != .codex && self != .claudeCLI }
 }
 
+/// A proposal may only be applied to the exact setup and brief it was requested for.
+struct ProductionProposalContext: Equatable {
+    var spec: ProductionSpec
+    var instructions: String
+    var provider: ProductionAIProvider
+    var model: String
+
+    func accepts(_ proposal: ProductionSpec, current: ProductionProposalContext) -> Bool {
+        self == current && proposal.pdf?.iccProfile == spec.pdf?.iccProfile
+    }
+}
+
 struct ProductionSpecProposal {
     let proposedJob: Data
     let unknowns: [String]

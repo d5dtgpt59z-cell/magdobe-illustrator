@@ -221,7 +221,7 @@ enum SVGExporter {
 
 /// Isolated TextKit objects keep layout work off the main thread. Core Text supplies actual
 /// fallback-font glyph outlines, never an image fallback. Baselines use the native font metrics.
-private struct SVGTextLayout {
+struct SVGTextLayout {
     struct Line { var text: String; var origin: CGPoint; var attributed: NSAttributedString }
     var lines: [Line] = []
     let fontFamily: String

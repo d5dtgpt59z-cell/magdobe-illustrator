@@ -9,8 +9,16 @@ struct ProductionAssistantView: View {
     @State private var model = ""
     @State private var proposal: ProductionSpecProposal?
     @State private var proposedSpec: ProductionSpec?
+    @State private var reviewContext: ProductionProposalContext?
     @State private var error: String?
     @State private var task: Task<Void, Never>?
+    private var currentContext: ProductionProposalContext {
+        ProductionProposalContext(spec: spec, instructions: instructions, provider: provider, model: model)
+    }
+    private var proposalIsCurrent: Bool {
+        guard let reviewContext, let proposedSpec else { return false }
+        return reviewContext.accepts(proposedSpec, current: currentContext)
+    }
     var body: some View {
         GroupBox("Use your AI provider · optional") {
             VStack(alignment: .leading, spacing: 10) {
@@ -37,13 +45,17 @@ struct ProductionAssistantView: View {
                     Divider()
                     Text("Review proposed changes").font(.headline)
                     Text(proposal.explanation).font(.caption).textSelection(.enabled)
-                    ForEach(changes(from: spec, to: proposedSpec), id: \.self) { Text($0).font(.caption).textSelection(.enabled) }
+                    ForEach(changes(from: reviewContext?.spec ?? spec, to: proposedSpec), id: \.self) { Text($0).font(.caption).textSelection(.enabled) }
                     ForEach(proposal.unknowns, id: \.self) { Text("Unconfirmed: \($0)").font(.caption).foregroundStyle(.orange) }
                     ForEach(proposal.evidence, id: \.self) { Text("Source: \($0)").font(.caption2).foregroundStyle(.secondary).textSelection(.enabled) }
-                    Text("Artwork placement is uniform; fill-through-bleed may crop this delivery copy. AI cannot confirm supplier approval, convert colors or certify print readiness.").font(.caption).foregroundStyle(.secondary)
+                    Text("Artwork placement is uniform; fill-through-bleed may crop this delivery copy. Import the actual printer ICC profile yourself. The export engine performs color conversion and PDF checks; AI cannot confirm supplier approval.").font(.caption).foregroundStyle(.secondary)
+                    if !proposalIsCurrent { Text("The current setup, provider or instructions changed. Request a new proposal before applying changes.").font(.caption).foregroundStyle(.orange) }
                     HStack {
-                        Button("Keep Current") { self.proposal = nil; self.proposedSpec = nil }.help("Discard this proposal")
-                        Button("Use Proposed Setup") { spec = proposedSpec; spec.supplierConfirmed = false; self.proposal = nil; self.proposedSpec = nil }
+                        Button("Keep Current") { self.proposal = nil; self.proposedSpec = nil; reviewContext = nil }.help("Discard this proposal")
+                        Button("Use Proposed Setup") {
+                            guard proposalIsCurrent else { return }
+                            spec = proposedSpec; spec.supplierConfirmed = false; self.proposal = nil; self.proposedSpec = nil; reviewContext = nil
+                        }.disabled(!proposalIsCurrent)
                             .help("Apply these settings to the draft; Save Setup persists them in your project")
                     }
                 }
@@ -54,15 +66,19 @@ struct ProductionAssistantView: View {
         }.onDisappear { task?.cancel(); assistant.cancel() }
     }
     private func propose() {
-        error = nil; proposal = nil; proposedSpec = nil
-        let before = spec, selected = provider, textModel = model, brief = instructions
+        error = nil; proposal = nil; proposedSpec = nil; reviewContext = nil
+        let context = currentContext
         task = Task {
             do {
-                let result = try await assistant.propose(instructions: brief, currentJob: before.jobData(), provider: selected, model: textModel, settings: settings)
+                let result = try await assistant.propose(instructions: context.instructions, currentJob: context.spec.jobData(), provider: context.provider, model: context.model, settings: settings)
                 try Task.checkCancellation()
                 var next = try JSONDecoder().decode(ProductionSpec.self, from: result.proposedJob).validated()
                 next.supplierConfirmed = false
-                proposedSpec = next; proposal = result
+                guard context.accepts(next, current: currentContext) else {
+                    error = "The setup or instructions changed while the proposal was being prepared, or its ICC identity differed. Current settings were kept. Request a new proposal."
+                    task = nil; return
+                }
+                reviewContext = context; proposedSpec = next; proposal = result
             } catch is CancellationError { error = "Proposal cancelled. Current settings were kept." }
             catch { self.error = error.localizedDescription }
             task = nil
@@ -71,14 +87,24 @@ struct ProductionAssistantView: View {
     private func changes(from old: ProductionSpec, to new: ProductionSpec) -> [String] {
         guard let a = try? JSONSerialization.jsonObject(with: old.jobData()) as? [String: Any],
               let b = try? JSONSerialization.jsonObject(with: new.jobData()) as? [String: Any] else { return [] }
+        func flattened(_ object: [String: Any], prefix: String = "") -> [String: Any] {
+            var result: [String: Any] = [:]
+            for (key, value) in object {
+                let path = prefix.isEmpty ? key : prefix + "." + key
+                if let nested = value as? [String: Any] { result.merge(flattened(nested, prefix: path)) { _, next in next } }
+                else { result[path] = value }
+            }
+            return result
+        }
+        let beforeFields = flattened(a), afterFields = flattened(b)
         func string(_ value: Any?) -> String {
             guard let value else { return "Unspecified" }
             if let array = value as? [String] { return array.joined(separator: ", ") }
             return String(describing: value)
         }
-        return Set(a.keys).union(b.keys).sorted().compactMap { key in
-            let before = string(a[key]), after = string(b[key])
-            return before == after ? nil : "\(key.replacingOccurrences(of: "_", with: " ")): \(before) → \(after)"
+        return Set(beforeFields.keys).union(afterFields.keys).sorted().compactMap { key in
+            let before = string(beforeFields[key]), after = string(afterFields[key])
+            return before == after ? nil : "\(key.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: ".", with: " · ")): \(before) → \(after)"
         }
     }
 }

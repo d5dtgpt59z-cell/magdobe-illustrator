@@ -11,6 +11,8 @@ final class ProductionWorkflowStore: ObservableObject {
     @Published private(set) var error: String?
     @Published private(set) var savedURL: URL?
     @Published private(set) var result: ProductionCheckResult?
+    @Published private(set) var pdfResult: ProductionPDFResult?
+    @Published private(set) var pdfArtifacts: URL?
     private var task: Task<Void, Never>?
     private var savePanel: NSSavePanel?
 
@@ -41,10 +43,37 @@ final class ProductionWorkflowStore: ObservableObject {
             }
         }
     }
+    func exportPDF(project: VectorProject, spec: ProductionSpec, icc: Data) {
+        guard !busy, !choosingDestination else { return }
+        do {
+            _ = try spec.validated()
+            guard let pdf = spec.pdf else { throw ProductionPDFError.missingProfile }
+            _ = try pdf.validated(requireProfile: true)
+            _ = try ProductionICCProfile.validate(icc, expected: pdf.iccProfile)
+        } catch { self.error = error.localizedDescription; return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = "Artwork-production.pdf"; panel.title = "Export Production PDF"
+        panel.message = "Convert process artwork once using your imported printer ICC, then run the supported generated-vector PDF checks. Technical and finish roles are omitted."
+        panel.prompt = "Export"; panel.canCreateDirectories = true
+        panel.directoryURL = UserDefaults.standard.url(forKey: "artwork.lastExportDirectory")
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        savePanel = panel; choosingDestination = true
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { [weak self, weak panel] response in
+            Task { @MainActor in
+                guard let self, let panel, self.savePanel === panel else { return }
+                let destination = response == .OK ? panel.url : nil
+                self.savePanel = nil; self.choosingDestination = false
+                guard let url = destination else { return }
+                UserDefaults.standard.set(url.deletingLastPathComponent(), forKey: "artwork.lastExportDirectory")
+                self.startPDF(project: project, spec: spec, icc: icc, destination: url)
+            }
+        }
+    }
     func check(project: VectorProject, spec: ProductionSpec) { start(project: project, spec: spec, destination: nil) }
     private func start(project: VectorProject, spec: ProductionSpec, destination: URL?) {
         guard !busy, !choosingDestination else { return }
-        error = nil; savedURL = nil; result = nil; busy = true; total = project.shapes.count; completed = 0
+        error = nil; savedURL = nil; result = nil; pdfResult = nil; pdfArtifacts = nil; busy = true; total = project.shapes.count; completed = 0
         stage = destination == nil ? "Preparing a vector snapshot…" : "Exporting production SVG…"
         task = Task { [weak self] in
             guard let self else { return }
@@ -67,11 +96,38 @@ final class ProductionWorkflowStore: ObservableObject {
             busy = false; stage = ""; task = nil
         }
     }
+    private func startPDF(project: VectorProject, spec: ProductionSpec, icc: Data, destination: URL) {
+        guard !busy, !choosingDestination else { return }
+        clearReceipts(); busy = true; total = project.shapes.count; completed = 0; stage = "Preparing RGB vector draft…"
+        task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let progress: (Int, Int) -> Void = { [weak self] done, count in
+                    Task { @MainActor in self?.completed = done; self?.total = count }
+                }
+                let exporter = Task.detached(priority: .userInitiated) { try ProductionPDFDraftExporter.draft(project, spec: spec, progress: progress) }
+                let draft = try await withTaskCancellationHandler { try await exporter.value } onCancel: { exporter.cancel() }
+                try Task.checkCancellation(); stage = "Converting ICC colors and checking the generated PDF…"
+                let finalizer = ProductionPDFFinalizer(); pdfArtifacts = finalizer.directory
+                let checked = try await finalizer.finalize(draft: draft, icc: icc, spec: spec)
+                pdfResult = checked; pdfArtifacts = checked.directory
+                guard checked.passed else { throw ProductionPDFError.validationFailed }
+                stage = "Saving validated PDF…"
+                let writer = Task.detached(priority: .userInitiated) { try finalizer.commit(checked, to: destination) }
+                try await withTaskCancellationHandler { try await writer.value } onCancel: { writer.cancel() }
+                savedURL = destination
+            } catch is CancellationError { error = "Production PDF export cancelled. Your artwork and existing destination were kept." }
+            catch let failure as ProductionPDFJobFailure { pdfArtifacts = failure.directory; error = failure.localizedDescription }
+            catch { self.error = error.localizedDescription }
+            busy = false; stage = ""; task = nil
+        }
+    }
     func cancel() { task?.cancel(); savePanel?.cancel(nil) }
     func clearReceipts() {
         guard !busy else { return }
-        result = nil; savedURL = nil; error = nil
+        result = nil; pdfResult = nil; pdfArtifacts = nil; savedURL = nil; error = nil
     }
     func reveal(_ url: URL) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
     func openReport() { if let url = result?.reportURL { NSWorkspace.shared.open(url) } }
+    func openPDFReport() { if let url = pdfResult?.reportURL { NSWorkspace.shared.open(url) } }
 }

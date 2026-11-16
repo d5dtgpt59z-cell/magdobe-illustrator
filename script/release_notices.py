@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGES = ("vtracer", "svgpathtools", "numpy", "scipy", "svgwrite", "certifi", "pyinstaller",
-            "defusedxml", "pydantic", "pydantic_core", "annotated_types", "typing_extensions", "typing_inspection", "Pillow", "PyMuPDF")
+            "defusedxml", "pydantic", "pydantic_core", "annotated_types", "typing_extensions", "typing_inspection", "Pillow", "PyMuPDF", "pikepdf", "lxml")
 # Canonical https://www.gnu.org/licenses/agpl-3.0.txt, verified 2026-11-16.
 AGPL_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
 
@@ -48,6 +48,13 @@ def collect(output, binaries):
     if checker.is_dir():
         revision = json.loads((checker / "source-revision.json").read_text())["revision"]
         component("PressCheck standalone worker", revision, [("PressCheck-LICENSE.txt", checker / "PressCheck-LICENSE.txt")])
+        engine = checker / "Ghostscript"
+        if engine.is_dir():
+            version = json.loads((engine / "manifest.json").read_text())["source"]["version"]
+            notices = [(str(Path("Ghostscript") / path.relative_to(engine / "notices")), path)
+                       for path in sorted((engine / "notices").rglob("*")) if path.is_file()]
+            notices.append(("Ghostscript/README.txt", engine / "README.txt"))
+            component("Ghostscript standalone converter", version, notices)
     python_license = Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"
     component("CPython", sys.version.split()[0], [("Python-LICENSE.txt", python_license)])
     upstream_notices = Path(sys.base_prefix).parent / "redistribution-notices"

@@ -76,8 +76,8 @@ struct ContentView: View {
                 Menu {
                     ForEach(ExportFormat.allCases, id: \.self) { format in Button("Export \(format.rawValue.uppercased())…") { session.export(format) } }
                     Divider()
-                    Button("Production Setup / Check…") { session.showProductionSetup = true }
-                } label: { Label("Export", systemImage: "square.and.arrow.up").labelStyle(.titleAndIcon) }.help("Export artwork as SVG, PDF, or PNG")
+                    Button("Production SVG / CMYK / PDF/X…") { session.showProductionSetup = true }
+                } label: { Label("Export", systemImage: "square.and.arrow.up").labelStyle(.titleAndIcon) }.help("Export artwork as SVG, PDF or PNG, or prepare a printer-profile production PDF")
             }
         }
         .alert("Couldn’t complete the action", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) { Button("OK") { session.error = nil } } message: { Text(session.error ?? "") }

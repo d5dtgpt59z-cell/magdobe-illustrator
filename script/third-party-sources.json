@@ -12,6 +12,13 @@
       "version": "1.28.6",
       "url": "https://mupdf.com/downloads/archive/mupdf-1.28.6-source.tar.gz",
       "sha256": "dc85000640a45d90ca9b77b061f6ca67cce0c4d4fbecf8819647baf573eef101"
+    },
+    {
+      "name": "pikepdf",
+      "version": "10.13.0.post1",
+      "url": "https://files.pythonhosted.org/packages/1c/0e/6e74dd213537b71c945743a4b3112dbb430896ad68b8a6ad22e4468455d4/pikepdf-10.13.0.post1.tar.gz",
+      "sha256": "4b73f926ebae81f04bf14527af330bd00bb268be767e0f189f7c4c3e4ad7ae0a",
+      "bundled_engine": "qpdf 12.3.2"
     }
   ]
 }

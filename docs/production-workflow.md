@@ -1,6 +1,6 @@
 # Production setup and local checks
 
-Use **File → Production Setup…** or **Export → Production Setup / Check…**. Existing SVG, PDF, PNG and editable-project save commands retain their behavior.
+Use **File → Production Setup…**, **File → Export → Production PDF / PDF/X…**, or the toolbar’s production export entry. Existing SVG, PDF, PNG and editable-project save commands retain their behavior.
 
 Production Setup records a separate job specification in the `.mvector` document. Enter the printer's actual trim dimensions, bleed, safe inset, color requirement and any specified minimum text size, stroke width or raster resolution. Dimensions can be displayed in inches or millimeters; millimeters are stored. The initial values are an unconfirmed example, not a supplier-approved template. Custom named profiles, printer notes and specification references can be saved locally and reused. Loading a profile or changing confirmed requirements clears supplier confirmation.
 
@@ -36,8 +36,8 @@ This structure is a starting study. Internal capacity, material grain, bend allo
 
 ## Explicit limits
 
-- Production SVG remains RGB. Selecting “CMYK required” records a requirement for preflight; it does not convert colors. There is no ICC/output-intent or PDF/X export in this addition.
-- The existing PDF exporter remains general-purpose, with its existing artboard sizing/clipping. Use Production SVG for this physical setup workflow; do not infer that the ordinary PDF command applies production dimensions.
+- Production SVG remains RGB. Selecting “CMYK required” records its requirement. The separate [Production PDF workflow](production-pdf.md) now converts once using the imported ICC profile and writes an output intent, with CMYK PDF and PDF/X-4 targets. Its supported-subset checks do not establish independent full ISO certification.
+- The ordinary PDF exporter remains general-purpose, with its existing artboard sizing/clipping. Use Production SVG or Production PDF for the physical setup; the ordinary PDF command does not apply production dimensions or the printer ICC.
 - A validator cannot invent missing artwork, determine a printer's unprovided tolerances, certify physical color or replace a supplier proof. Unknown requirements must remain unconfirmed.
 - Native SVG does not embed raster artwork. Vector paths have no intrinsic raster PPI. Editable text can still require font substitution; the existing standard SVG export has a separate optional outline mode.
 - Structural dielines, card front/back/deck assembly, substrate/caliper, wrapper sealing and physical manufacturing approval require their own workflows and supplier specifications.

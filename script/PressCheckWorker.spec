@@ -8,12 +8,12 @@ root = Path(SPECPATH).parent
 source = Path(os.environ["MAGDOBE_PRESSCHECK_SOURCE"])
 datas = [(str(source / "frontend/out"), "web")]
 binaries = []
-hidden = ["presscheck.structure"]
+hidden = ["presscheck.structure", "presscheck.production_pdf", "presscheck.pdfx_audit", "pikepdf", "lxml.etree"]
 for module in ("pymupdf",):
     d, b, h = collect_all(module, filter_submodules=lambda name: not name.startswith("pymupdf.layout"),
                           exclude_datas=["layout/**", "**/layout/**"])
     datas += d; binaries += b; hidden += h
-for package in ("defusedxml", "pydantic", "pydantic_core", "Pillow", "PyMuPDF"):
+for package in ("defusedxml", "pydantic", "pydantic_core", "Pillow", "PyMuPDF", "pikepdf", "lxml"):
     for original, destination in copy_metadata(package):
         directory = Path(original)
         for file in directory.rglob("*"):

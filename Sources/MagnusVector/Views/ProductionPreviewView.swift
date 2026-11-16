@@ -31,6 +31,7 @@ struct ProductionPreviewView: View {
             }.frame(height: 300).padding(8).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
             Text("Red: bleed · Blue: trim · Green: safe inset").font(.caption2).foregroundStyle(.secondary)
             Text("Guides appear only here; they are not printed in the SVG.").font(.caption2).foregroundStyle(.secondary)
+            Text("RGB placement preview; the printed CMYK color is not simulated.").font(.caption2).foregroundStyle(.secondary)
         }.task {
             let snapshot = project
             let image = await Task.detached(priority: .utility) { Self.render(snapshot) }.value

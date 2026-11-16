@@ -1,6 +1,6 @@
 # macOS download and distribution
 
-Magdobe has two separate builds. `script/build_and_run.sh` creates a developer app that uses the local tracing runtime. `script/build_release.sh` creates the self-contained application intended for packaging. Distribute the latter. The release app includes artwork and PressCheck workers, their Python runtimes, tracing/checking dependencies, a static production console, exact worker/source archives and license notices. Installed users do not need Xcode, Python, Node or a separately started server.
+Magdobe has two separate builds. `script/build_and_run.sh` creates a developer app that uses the local tracing runtime. `script/build_release.sh` creates the self-contained application intended for packaging. Distribute the latter. The release app includes artwork and PressCheck workers, their Python runtimes, tracing/checking dependencies, a static production console, exact worker/source archives and license notices. Version 0.10 also bundles a separately executable Ghostscript production converter and a qpdf-based PDF auditor. Installed users do not need Xcode, Python, Node or a separately started server.
 
 The current release target is macOS 14 or later. Build Apple Silicon and Intel artifacts separately on matching machines and Python runtimes; the verifier checks that every native dependency supports the advertised architecture. An Apple Silicon build is not an Intel or universal build.
 
@@ -28,7 +28,7 @@ To make a clearly labeled local testing disk image without Apple signing or nota
 ```sh
 python3 script/release.py package \
   --app "dist/release/Magdobe Illustrator.app" \
-  --output "dist/Magdobe-0.9.0-arm64-PREVIEW.dmg" --preview
+  --output "dist/Magdobe-0.10.0-arm64-PREVIEW.dmg" --preview
 ```
 
 The preview image includes an Applications shortcut and a preview notice. It is not a trusted public installer; Gatekeeper can reject it. The `PREVIEW` filename is required. Preview mode does not sign with Developer ID, contact Apple, weaken Gatekeeper, or claim distribution readiness.
@@ -76,10 +76,10 @@ Once the app passes `--mode ready`, build the final signed and notarized disk im
 ```sh
 python3 script/release.py package \
   --app "dist/release/Magdobe Illustrator.app" \
-  --output "dist/Magdobe-0.9.0-arm64.dmg" \
+  --output "dist/Magdobe-0.10.0-arm64.dmg" \
   --identity "$MAGDOBE_SIGN_IDENTITY" \
   --profile "$MAGDOBE_NOTARY_PROFILE"
-(cd dist && shasum -a 256 -c "Magdobe-0.9.0-arm64.dmg.sha256")
+(cd dist && shasum -a 256 -c "Magdobe-0.10.0-arm64.dmg.sha256")
 ```
 
 The final packaging command validates the ready app, copies it with an Applications shortcut, creates a read-only compressed DMG, verifies and mounts that image for another bundle check, signs the DMG with Developer ID, notarizes/staples the DMG, and assesses the final container. The SHA-256 sidecar is written only after these steps. Existing DMGs/checksum files are never replaced. If a later stage fails, treat the output as incomplete and use a new output filename after resolving the reported failure.
@@ -87,22 +87,27 @@ The final packaging command validates the ready app, copies it with an Applicati
 The checksum line contains the DMG's filename. Run the checksum check from the DMG's folder, or use:
 
 ```sh
-(cd dist && shasum -a 256 -c "Magdobe-0.9.0-arm64.dmg.sha256")
+(cd dist && shasum -a 256 -c "Magdobe-0.10.0-arm64.dmg.sha256")
 ```
 
 Publishing is a separate action. Upload only the final verified DMG and its matching checksum to the intended GitHub release or download host, then test the actual public download. No script in this workflow uploads to GitHub or modifies the website.
 
-## Version 0.9.0 candidate
+## Production PDF candidate
 
-The production-workflow candidate is **Magdobe 0.9.0, build 4**, for **Apple Silicon (arm64)**. Portable validation inspects **150 Mach-O files**, architecture/minimum-OS requirements, process-specific library paths, resources, source and notice inventories. Both helper applications are sealed before the outer app. Developer ID signing and Apple notarization are the release owner's remaining steps; this candidate is an ad-hoc preview.
+The production-PDF source is **Magdobe 0.10.0, build 5**. Its release build stages the pinned Ghostscript engine beside PressCheckWorker, includes the exact source/licenses/build recipe, and signs nested code before each app wrapper. The release gate verifies the engine version, source archive, architecture, deployment target, dependencies and resource inventory. Existing candidates are kept in their original versioned directories.
 
-Validation comprises **105 native tests, 61 artwork/provider tests and 26 release tests**, including seven actual frozen-worker integrations on the development Mac. The new checker integrations run a 2,199-path fixture, safe preview rendering, authenticated static console/API access, structural/native project generation and profile persistence across server restarts. The frozen text assistant uses a local fixture provider. Workers run from relocated paths with a temporary home and a system-only PATH, without using external Python or Node. The separate PressCheck source passes its backend/frontend checks and existing CI/container workflows.
+The native workflow has passed a real local client-to-converter-to-auditor check with the 2,199-object document. It retained vector output, physical trim/bleed boxes and exact ICC identity. CMYK conversion and PDF/X-4 output are described in [production PDF](production-pdf.md), including the supported-check scope and explicit limits. Automated examples use a test profile, not a supplier-approved printing condition.
 
-A native UI check loaded the real 2,199-object project, ran the bundled local checker and saved an editable production SVG with **2,199 unique paths**, no raster image elements and a **69.85 × 95.25 mm** bleed canvas. The production export panel uses asynchronous AppKit presentation so destination validation remains responsive inside the SwiftUI setup sheet. The checker preserves the exact source bytes and reports missing specifications and unsupported measurements explicitly.
+Run the actual frozen integrations after building, using the pinned build environment:
 
-A small live Codex spec proposal converted a supplied 2.5 × 3.5-inch trim and 1/8-inch bleed/safety margins to 63.5 × 88.9 mm and 3.175 mm, retaining source quotations and leaving supplier confirmation false. Other text-provider transports use offline fixtures; live keyed-provider testing is not claimed.
+```sh
+MAGDOBE_TEST_APP="$PWD/dist/release-0.10.0/Magdobe Illustrator.app" \
+  .build/distribution-build-env/bin/python -m unittest discover -s Tests/Release -v
+```
 
-These checks do not establish behavior on another physical Mac, an actual macOS 14 installation, a quarantined browser download, Adobe Illustrator or a commercial press. CI never selects an Apple identity, submits to Apple or publishes a binary. Where no packaged candidate exists, the real frozen integration tests explicitly skip.
+These tests relocate the helper applications and run with a temporary home and system-only PATH. They cover local tracing, fixture image/text providers, HTTPS verification, SVG preflight, structural projects, profile persistence and CMYK/PDF-X export. They do not replace a fresh physical Mac/quarantined-download test. Core tests can run in CI without a release app; frozen integration tests explicitly skip when their matching candidate is absent.
+
+Apple Developer ID signing/notarization and public download publication remain separate owner-controlled release steps. No certificate is selected and no submission is made by the preview builder. The website refresh follows the completed suite and verified signed download.
 
 ## Validation before publishing
 

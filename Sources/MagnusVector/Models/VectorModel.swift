@@ -152,6 +152,7 @@ struct VectorProject: Codable, Equatable {
     var shapes: [VectorShape] = []
     var hierarchy: [VectorNode]? = nil
     var production: ProductionSpec? = nil
+    var productionICCProfile: Data? = nil
 
     func validated() throws -> VectorProject {
         guard version == 1 || version == 2 else { throw ValidationError.unsupportedVersion }
@@ -172,6 +173,10 @@ struct VectorProject: Codable, Equatable {
         }
         try validateHierarchy()
         if let production { _ = try production.validated() }
+        if let productionICCProfile {
+            guard let descriptor = production?.pdf?.iccProfile else { throw ProductionPDFError.invalidProfile }
+            _ = try ProductionICCProfile.validate(productionICCProfile, expected: descriptor)
+        }
         return self
     }
     enum ValidationError: LocalizedError {
